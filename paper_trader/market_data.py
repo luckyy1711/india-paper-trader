@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import Any
 
 from .config import HISTORY_PERIOD
 from .symbols import BENCHMARK_TICKER, NIFTY50_SYMBOLS, YAHOO_TICKERS
 
 BENCHMARK_KEY = "__BENCHMARK__"
+BATCH_SIZE = 8
 
 
 def _to_date(index_value: Any) -> str:
@@ -21,8 +23,6 @@ def _rows_from_frame(frame: Any) -> list[dict[str, Any]]:
     """Normalize a single-ticker OHLC frame without assuming column casing."""
     if frame is None or getattr(frame, "empty", True):
         return []
-    # yfinance can return a MultiIndex even for a single ticker. Flatten it by
-    # keeping the level containing standard OHLC field names.
     import pandas as pd
 
     if isinstance(frame.columns, pd.MultiIndex):
@@ -66,10 +66,10 @@ def _extract_ticker_frame(raw: Any, yahoo_symbol: str, expected_tickers: list[st
 
 
 def download_market_data() -> dict[str, list[dict[str, Any]]]:
-    """Download adjusted daily OHLC bars; retry missing tickers individually.
+    """Download daily OHLC bars in small batches to reduce provider throttling.
 
-    Raises on total benchmark failure and never fabricates data. The individual
-    fallback is intentionally limited to tickers missing from the bulk response.
+    Missing tickers receive one delayed individual retry. Data is never fabricated.
+    Raises if the benchmark or all stock histories are unavailable.
     """
     try:
         import pandas as pd
@@ -83,35 +83,39 @@ def download_market_data() -> dict[str, list[dict[str, Any]]]:
     output: dict[str, list[dict[str, Any]]] = {}
     failures: dict[str, str] = {}
 
-    try:
-        raw = yf.download(
-            tickers=yahoo_symbols,
-            period=HISTORY_PERIOD,
-            interval="1d",
-            group_by="ticker",
-            auto_adjust=True,
-            actions=False,
-            progress=False,
-            threads=True,
-            timeout=30,
-        )
-    except Exception as exc:
-        raw = None
-        failures["bulk_download"] = type(exc).__name__
+    # A single 51-symbol request followed by 50 rapid individual retries can
+    # trigger throttling. Use small batches, with a pause between requests.
+    for offset in range(0, len(yahoo_symbols), BATCH_SIZE):
+        batch = yahoo_symbols[offset:offset + BATCH_SIZE]
+        try:
+            raw = yf.download(
+                tickers=batch,
+                period=HISTORY_PERIOD,
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=True,
+                actions=False,
+                progress=False,
+                threads=False,
+                timeout=30,
+            )
+            for yahoo_symbol in batch:
+                frame = _extract_ticker_frame(raw, yahoo_symbol, batch, pd)
+                rows = _rows_from_frame(frame) if frame is not None else []
+                if rows:
+                    output[symbol_map[yahoo_symbol]] = rows
+                else:
+                    failures[yahoo_symbol] = "missing_or_unrecognized_batch_columns"
+        except Exception as exc:
+            for yahoo_symbol in batch:
+                failures[yahoo_symbol] = f"batch_{type(exc).__name__}"
+        if offset + BATCH_SIZE < len(yahoo_symbols):
+            time.sleep(1.5)
 
-    if raw is not None and not raw.empty:
-        for yahoo_symbol, local_symbol in symbol_map.items():
-            frame = _extract_ticker_frame(raw, yahoo_symbol, yahoo_symbols, pd)
-            rows = _rows_from_frame(frame) if frame is not None else []
-            if rows:
-                output[local_symbol] = rows
-            else:
-                failures[yahoo_symbol] = "missing_or_unrecognized_bulk_columns"
-
-    # If the bulk MultiIndex layout changed or a ticker was omitted, retry only
-    # the affected ticker. This avoids silently reporting a zero-stock universe.
+    # Retry only missing tickers, slowly, to avoid hammering Yahoo Finance.
     missing = [ticker for ticker in yahoo_symbols if symbol_map[ticker] not in output]
     for yahoo_symbol in missing:
+        time.sleep(2.0)
         try:
             single = yf.download(
                 tickers=yahoo_symbol,
@@ -121,7 +125,7 @@ def download_market_data() -> dict[str, list[dict[str, Any]]]:
                 actions=False,
                 progress=False,
                 threads=False,
-                timeout=20,
+                timeout=25,
             )
             rows = _rows_from_frame(single)
             if rows:
@@ -144,6 +148,6 @@ def download_market_data() -> dict[str, list[dict[str, Any]]]:
     print(
         f"Market data coverage: {stock_count}/{len(NIFTY50_SYMBOLS)} stocks; "
         f"benchmark bars={len(output[BENCHMARK_KEY])}; "
-        f"single-ticker retries={sum(1 for ticker in missing if symbol_map[ticker] in output)}"
+        f"individual retries recovered={sum(1 for ticker in missing if symbol_map[ticker] in output)}"
     )
     return output
