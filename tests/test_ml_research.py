@@ -6,6 +6,7 @@ from paper_trader.ml_research import (
     HORIZON_SESSIONS,
     _eligible_training_rows,
     _prepare_research_rows,
+    _prediction_quality_summary,
     backtest_lightgbm_research,
 )
 
@@ -72,6 +73,31 @@ class OpenSourceModelResearchTests(unittest.TestCase):
             "AAA": mutated_stock,
         })
         self.assertEqual(features_before[cutoff][0][1], features_after[cutoff][0][1])
+
+    def test_prediction_diagnostics_measure_out_of_sample_ranking(self):
+        samples = [
+            (10, "AAA", 0.05, 0.04),
+            (10, "BBB", 0.04, 0.03),
+            (10, "CCC", 0.03, 0.02),
+            (10, "DDD", 0.02, 0.01),
+            (10, "EEE", 0.01, -0.01),
+            (20, "AAA", 0.05, 0.02),
+            (20, "BBB", 0.04, 0.01),
+            (20, "CCC", 0.03, 0.00),
+            (20, "DDD", 0.02, -0.01),
+            (20, "EEE", 0.01, -0.02),
+        ]
+        report = _prediction_quality_summary(samples)
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["cross_sections_evaluated"], 2)
+        self.assertEqual(report["sample_count"], 10)
+        self.assertEqual(report["mean_spearman_rank_ic"], 1.0)
+        self.assertGreater(report["top_minus_universe_excess_pp"], 0)
+
+    def test_prediction_diagnostics_report_insufficient_samples(self):
+        report = _prediction_quality_summary([(1, "AAA", 0.1, 0.05)])
+        self.assertEqual(report["status"], "insufficient_evaluable_cross_sections")
+        self.assertEqual(report["cross_sections_evaluated"], 0)
 
     def test_short_history_is_blocked_before_model_training(self):
         report = backtest_lightgbm_research({"__BENCHMARK__": make_bars(350), "AAA": make_bars(350, 1)})
