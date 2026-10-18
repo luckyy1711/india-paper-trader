@@ -43,7 +43,22 @@ def _rows_from_frame(frame: Any) -> list[dict[str, Any]]:
         try:
             opened, closed = float(row["open"]), float(row["close"])
             if math.isfinite(opened) and math.isfinite(closed) and opened > 0 and closed > 0:
-                rows.append({"date": _to_date(index), "open": opened, "close": closed})
+                item = {"date": _to_date(index), "open": opened, "close": closed}
+                for optional_field in ("high", "low", "volume"):
+                    if optional_field not in frame.columns:
+                        continue
+                    try:
+                        optional_value = float(row[optional_field])
+                    except (TypeError, ValueError, KeyError):
+                        continue
+                    if not math.isfinite(optional_value):
+                        continue
+                    if optional_field == "volume":
+                        if optional_value >= 0:
+                            item[optional_field] = optional_value
+                    elif optional_value > 0:
+                        item[optional_field] = optional_value
+                rows.append(item)
         except (TypeError, ValueError, KeyError):
             continue
     unique = {row["date"]: row for row in rows}
@@ -54,7 +69,8 @@ def _extract_ticker_frame(raw: Any, yahoo_symbol: str, pd: Any) -> Any:
     if raw is None or raw.empty:
         return None
     if not isinstance(raw.columns, pd.MultiIndex):
-        return raw.copy() if len(expected_tickers) == 1 else None
+        # A batch response without ticker columns cannot be mapped safely to one symbol.
+        return None
     for level in range(raw.columns.nlevels):
         labels = set(str(value) for value in raw.columns.get_level_values(level))
         if yahoo_symbol in labels:
