@@ -23,6 +23,16 @@ class SyntheticSimulationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             generate_synthetic_bars(seed=1, symbols=2)
 
+    def test_generated_year_can_run_through_real_rule_backtest(self):
+        bars = generate_synthetic_bars(
+            seed=21, symbols=3, warmup_sessions=300, evaluation_sessions=20
+        )
+        from paper_trader.research import backtest_strategy
+        result = backtest_strategy(bars, "trend_momentum_126", sample_days=20)
+        self.assertEqual(result.get("status"), "ok")
+        self.assertIn("total_return_pct", result)
+        self.assertIn("benchmark_total_return_pct", result)
+
     def test_monte_carlo_checkpoints_and_isolates_portfolio(self):
         fake_result = {
             "status": "ok", "total_return_pct": 3.0, "benchmark_total_return_pct": 1.0,
