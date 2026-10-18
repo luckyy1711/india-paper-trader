@@ -9,6 +9,7 @@ on:
       - 'paper_trader/core.py'
       - 'paper_trader/main.py'
       - 'paper_trader/research.py'
+      - 'paper_trader/ml_research.py'
       - 'paper_trader/config.py'
       - 'tests/**'
       - 'requirements.txt'
