@@ -16,4 +16,4 @@ The page refreshes data every 60 seconds. It uses Chart.js and a TradingView cha
 
 ## Important data warning
 
-The current research report has only 1 of 50 intended stocks downloaded. The page displays that warning instead of treating the backtest as reliable. The TradingView chart is an external market widget and is not the data feed used by the bot. This dashboard is read-only and cannot place orders.
+The page reads the latest `data/research.json` and displays data-coverage warnings when the downloaded universe or benchmark history is incomplete. Always check the report's exact date coverage, because a scheduled run can be blocked by provider delays or missing tickers. The TradingView chart is an external market widget and is not the data feed used by the bot. This dashboard is read-only and cannot place orders.
