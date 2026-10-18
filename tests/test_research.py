@@ -34,6 +34,8 @@ class ResearchQualityGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked_insufficient_market_data")
         self.assertEqual(report["data_quality"]["status"], "blocked_insufficient_market_data")
         self.assertEqual(report["market_data_coverage"]["stock_symbols_downloaded"], 1)
+        self.assertEqual(report["open_source_models"][0]["status"], "blocked_insufficient_market_data")
+        self.assertFalse(report["open_source_models"][0]["auto_promoted"])
         self.assertEqual(len(report["results"]), len(STRATEGIES))
         for result in report["results"]:
             self.assertEqual(result["status"], "blocked_insufficient_market_data")
