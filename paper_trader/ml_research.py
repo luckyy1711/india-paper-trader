@@ -7,16 +7,14 @@ a drop-in Freqtrade/LEAN engine. It has no broker integration and never places o
 
 from __future__ import annotations
 
-from math import isfinite, log, sqrt
+from math import isfinite, sqrt
 import statistics
 from typing import Any
 
 from .config import (
     INITIAL_CASH,
-    MAX_DRAWDOWN,
     MAX_POSITIONS,
     MIN_RESEARCH_BENCHMARK_BARS,
-    SLIPPAGE_RATE,
     TRANSACTION_COST_RATE,
 )
 from .core import benchmark_dates, execute_rebalance, mark_to_market, new_state
@@ -221,7 +219,6 @@ def _prepare_research_rows(
             except (TypeError, ValueError):
                 volume = 0.0
             volumes.append(volume if isfinite(volume) and volume > 0 else 0.0)
-        local_index_by_date = {day: index for index, day in enumerate(stock_dates)}
 
         for stock_index, row in enumerate(stock_rows):
             day = stock_dates[stock_index]
@@ -258,6 +255,14 @@ def _prepare_research_rows(
     for candidates in features_by_index.values():
         candidates.sort(key=lambda item: item[0])
     return dates, features_by_index, labelled_rows, benchmark_by_date, benchmark_closes
+
+
+def _eligible_training_rows(
+    samples: list[tuple[int, int, str, tuple[float, ...], float]],
+    signal_index: int,
+) -> list[tuple[int, int, str, tuple[float, ...], float]]:
+    """Only expose training labels whose full forward horizon ends by the signal date."""
+    return [sample for sample in samples if sample[1] <= signal_index]
 
 
 def _walk_forward_periods(
@@ -405,7 +410,7 @@ def backtest_lightgbm_research(
 
     def train_at(signal_index: int):
         nonlocal last_fit_sample_count, last_fit_error
-        eligible = [sample for sample in training_samples if sample[1] <= signal_index]
+        eligible = _eligible_training_rows(training_samples, signal_index)
         distinct_dates = {sample[0] for sample in eligible}
         distinct_symbols = {sample[2] for sample in eligible}
         last_fit_sample_count = len(eligible)
@@ -517,12 +522,12 @@ def backtest_lightgbm_research(
             for symbol in missing_held:
                 if last_close.get(symbol, 0) > 0:
                     day_closes[symbol] = last_close[symbol]
+        was_locked = bool(state.get("risk_locked", False))
         try:
             snapshot = mark_to_market(state, day_closes)
             equity = snapshot["equity"]
         except (ValueError, KeyError):
             equity = float(equity_points[-1]["equity"])
-        was_locked = bool(state.get("risk_locked", False))
         if not was_locked and state.get("risk_locked", False) and risk_lock_date is None:
             risk_lock_date = fill_date
         equity_points.append({"date": fill_date, "equity": round(float(equity), 2)})
