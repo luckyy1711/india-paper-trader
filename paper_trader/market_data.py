@@ -50,7 +50,7 @@ def _rows_from_frame(frame: Any) -> list[dict[str, Any]]:
     return [unique[day] for day in sorted(unique)]
 
 
-def _extract_ticker_frame(raw: Any, yahoo_symbol: str, expected_tickers: list[str], pd: Any) -> Any:
+def _extract_ticker_frame(raw: Any, yahoo_symbol: str, pd: Any) -> Any:
     if raw is None or raw.empty:
         return None
     if not isinstance(raw.columns, pd.MultiIndex):
@@ -77,7 +77,8 @@ def download_market_data() -> dict[str, list[dict[str, Any]]]:
     except ImportError as exc:
         raise RuntimeError("Missing dependencies. Install requirements.txt before running the bot.") from exc
 
-    symbol_map = dict(YAHOO_TICKERS)
+    # Reverse internal -> Yahoo mapping: requests and returned columns use Yahoo symbols.
+    symbol_map = {yahoo_symbol: symbol for symbol, yahoo_symbol in YAHOO_TICKERS.items()}
     symbol_map[BENCHMARK_TICKER] = BENCHMARK_KEY
     yahoo_symbols = list(symbol_map)
     output: dict[str, list[dict[str, Any]]] = {}
@@ -100,7 +101,7 @@ def download_market_data() -> dict[str, list[dict[str, Any]]]:
                 timeout=30,
             )
             for yahoo_symbol in batch:
-                frame = _extract_ticker_frame(raw, yahoo_symbol, batch, pd)
+                frame = _extract_ticker_frame(raw, yahoo_symbol, pd)
                 rows = _rows_from_frame(frame) if frame is not None else []
                 if rows:
                     output[symbol_map[yahoo_symbol]] = rows
@@ -135,6 +136,17 @@ def download_market_data() -> dict[str, list[dict[str, Any]]]:
                 failures[yahoo_symbol] = "no_usable_rows_after_single_ticker_retry"
         except Exception as exc:
             failures[yahoo_symbol] = f"single_ticker_{type(exc).__name__}"
+
+    if failures:
+        failed_stock_tickers = {ticker: reason for ticker, reason in failures.items() if ticker != BENCHMARK_TICKER}
+        if failed_stock_tickers:
+            examples = ", ".join(f"{ticker} ({reason})" for ticker, reason in list(failed_stock_tickers.items())[:12])
+            remaining = len(failed_stock_tickers) - min(len(failed_stock_tickers), 12)
+            suffix = f"; and {remaining} more" if remaining else ""
+            print(
+                f"Market-data diagnostics: {len(failed_stock_tickers)}/{len(NIFTY50_SYMBOLS)} stock tickers lacked usable history. "
+                f"Examples: {examples}{suffix}"
+            )
 
     if BENCHMARK_KEY not in output:
         summary = ", ".join(f"{key}:{value}" for key, value in list(failures.items())[:8])

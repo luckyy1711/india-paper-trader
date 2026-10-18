@@ -28,6 +28,10 @@ Yahoo Finance through `yfinance` is an unofficial interface intended for persona
 
 The constituent list is a maintained snapshot and must be updated after Nifty 50 reviews. Historical tests use the current constituents, creating **survivorship bias**. The Nifty 50 benchmark series is a price index, not a total-return index. Backtest metrics are research estimates, not forecasts or evidence of future profits.
 
+## Research data-quality gate
+
+Research backtest metrics are withheld unless at least 45 of the 50 stock histories are available with 260 or more daily bars and the benchmark has at least 300 daily bars. A failed check is recorded explicitly in `data/research.json` and makes the research workflow fail rather than presenting incomplete results as valid. Passing this gate does not remove survivorship bias, validate the external data provider, or make backtests predictive.
+
 ## Cloud execution and cost controls
 
 The workflow runs on GitHub-hosted Linux runners. GitHub Free currently includes 2,000 Actions minutes per month for private repositories; usage beyond included quotas may be billed if paid usage is enabled. Review GitHub's billing/Actions settings and ensure paid usage is disabled or capped at ₹0 before relying on scheduled runs: https://docs.github.com/en/billing/concepts/product-billing/github-actions
@@ -53,7 +57,9 @@ GitHub Actions is a scheduler, not a 24/7 server. Runs can be delayed, fail, or 
 python -m unittest discover -s tests -v
 ```
 
-### Interactive dashboard\n\nA dark, responsive dashboard with strategy-return graphs, a TradingView Nifty chart, portfolio metrics, research coverage warnings, and the trade ledger is in `dashboard/`. From the repository root, run `python -m http.server 8000`, then open `http://localhost:8000/dashboard/`. It refreshes saved data every 60 seconds. See `dashboard/README.md`. This is read-only and requires internet access for chart libraries. Keep the repository private: the dashboard reads the private simulation data and should not be published to a public host without deliberately reviewing what would be exposed.\n\nTo inspect the automated run, open the repository's **Actions** tab.
+## Interactive dashboard
+
+A dark, responsive dashboard with strategy-return graphs, a TradingView Nifty chart, portfolio metrics, research coverage warnings, and the trade ledger is in `dashboard/`. From the repository root, run `python -m http.server 8000`, then open `http://localhost:8000/dashboard/`. It refreshes saved data every 60 seconds. See `dashboard/README.md`. This is read-only and requires internet access for chart libraries. Keep the repository private: the dashboard reads the private simulation data and should not be published to a public host without deliberately reviewing what would be exposed.\n\nTo inspect the automated run, open the repository's **Actions** tab.
 
 ## Future mini-PC migration
 

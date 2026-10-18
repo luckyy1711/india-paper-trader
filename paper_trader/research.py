@@ -8,7 +8,14 @@ from math import sqrt
 import statistics
 from typing import Any
 
-from .config import ACTIVE_STRATEGY, INITIAL_CASH, STRATEGIES
+from .config import (
+    ACTIVE_STRATEGY,
+    INITIAL_CASH,
+    MIN_RESEARCH_BENCHMARK_BARS,
+    MIN_RESEARCH_SYMBOL_COVERAGE,
+    MIN_RESEARCH_SYMBOLS_WITH_260_BARS,
+    STRATEGIES,
+)
 from .core import benchmark_dates, execute_rebalance, mark_to_market, score_symbol, select_targets, new_state
 
 
@@ -137,42 +144,97 @@ def backtest_strategy(
 
 
 def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Build a report and withhold backtest metrics when input coverage is inadequate."""
     dates = benchmark_dates(bars_by_symbol)
-    results = []
-    for strategy_name in STRATEGIES:
-        try:
-            results.append(backtest_strategy(bars_by_symbol, strategy_name))
-        except Exception as exc:
-            results.append({"strategy": strategy_name, "status": "error", "error": type(exc).__name__})
-    successful = [item for item in results if item.get("status") == "ok"]
-    successful.sort(key=lambda item: (item.get("sharpe_approx", 0), item.get("total_return_pct", 0)), reverse=True)
-    other_results = [item for item in results if item.get("status") != "ok"]
     stock_rows = {symbol: rows for symbol, rows in bars_by_symbol.items() if symbol != "__BENCHMARK__"}
     row_counts = {symbol: len(rows) for symbol, rows in stock_rows.items()}
+    long_history_count = sum(count >= 260 for count in row_counts.values())
     coverage = {
         "stock_symbols_downloaded": len(stock_rows),
-        "stock_symbols_with_260_or_more_bars": sum(count >= 260 for count in row_counts.values()),
+        "stock_symbols_with_260_or_more_bars": long_history_count,
         "stock_symbols_with_200_or_more_bars": sum(count >= 200 for count in row_counts.values()),
         "min_stock_bars": min(row_counts.values()) if row_counts else 0,
         "max_stock_bars": max(row_counts.values()) if row_counts else 0,
         "symbols_scored_on_latest_common_signal_date": 0,
         "latest_common_signal_date": dates[-2] if len(dates) >= 2 else None,
     }
+
     if coverage["latest_common_signal_date"]:
         signal_date = coverage["latest_common_signal_date"]
-        for symbol, rows in stock_rows.items():
+        for _symbol, rows in stock_rows.items():
             history = [row for row in rows if str(row.get("date", "")) <= signal_date]
             if any(score_symbol(history, strategy_name) is not None for strategy_name in STRATEGIES):
                 coverage["symbols_scored_on_latest_common_signal_date"] += 1
 
+    failed_checks = []
+    if len(stock_rows) < MIN_RESEARCH_SYMBOL_COVERAGE:
+        failed_checks.append(
+            f"only {len(stock_rows)} of {len(NIFTY50_SYMBOLS)} stock histories downloaded "
+            f"(at least {MIN_RESEARCH_SYMBOL_COVERAGE} required)"
+        )
+    if long_history_count < MIN_RESEARCH_SYMBOLS_WITH_260_BARS:
+        failed_checks.append(
+            f"only {long_history_count} stocks have at least 260 daily bars "
+            f"(at least {MIN_RESEARCH_SYMBOLS_WITH_260_BARS} required)"
+        )
+    if len(dates) < MIN_RESEARCH_BENCHMARK_BARS:
+        failed_checks.append(
+            f"benchmark has only {len(dates)} daily bars (at least {MIN_RESEARCH_BENCHMARK_BARS} required)"
+        )
+
+    quality_status = "blocked_insufficient_market_data" if failed_checks else "ok"
+    if failed_checks:
+        quality_message = (
+            "; ".join(failed_checks)
+            + ". Backtest metrics are withheld until the data-quality gate passes."
+        )
+        results = [
+            {
+                "strategy": strategy_name,
+                "status": "blocked_insufficient_market_data",
+                "trade_count": 0,
+                "message": quality_message,
+            }
+            for strategy_name in STRATEGIES
+        ]
+    else:
+        results = []
+        for strategy_name in STRATEGIES:
+            try:
+                results.append(backtest_strategy(bars_by_symbol, strategy_name))
+            except Exception as exc:
+                results.append({"strategy": strategy_name, "status": "error", "error": type(exc).__name__})
+        successful = [item for item in results if item.get("status") == "ok"]
+        successful.sort(key=lambda item: (item.get("sharpe_approx", 0), item.get("total_return_pct", 0)), reverse=True)
+        other_results = [item for item in results if item.get("status") != "ok"]
+        results = successful + other_results
+        quality_message = (
+            f"Data-quality gate passed: {len(stock_rows)} stock histories downloaded, "
+            f"{long_history_count} with at least 260 daily bars, and {len(dates)} benchmark bars. "
+            "These checks do not guarantee accuracy or predict future performance."
+        )
+
     return {
+        "status": quality_status,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
         "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
         "sample_sessions_available": len(dates),
         "market_data_coverage": coverage,
+        "data_quality": {
+            "status": quality_status,
+            "minimum_stock_symbols_required": MIN_RESEARCH_SYMBOL_COVERAGE,
+            "minimum_symbols_with_260_or_more_bars_required": MIN_RESEARCH_SYMBOLS_WITH_260_BARS,
+            "minimum_benchmark_bars_required": MIN_RESEARCH_BENCHMARK_BARS,
+            "failed_checks": failed_checks,
+            "message": quality_message,
+        },
         "active_strategy": ACTIVE_STRATEGY,
         "active_strategy_changes_automatically": False,
-        "selection_note": "Recent walk-forward research only, with simplified costs/slippage. Current constituents create survivorship bias. Candidate strategies never auto-promote; paper-trial them separately. Diagnostic counters are included to help explain any zero-trade result.",
-        "results": successful + other_results,
+        "selection_note": (
+            "Recent walk-forward research only, with simplified costs/slippage. Current constituents create survivorship bias. "
+            "Candidate strategies never auto-promote; paper-trial them separately. Research results are withheld when market-data "
+            "coverage is below the configured quality gate."
+        ),
+        "results": results,
     }
