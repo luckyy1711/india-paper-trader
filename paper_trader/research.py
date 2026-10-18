@@ -641,6 +641,52 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
         try:
             ml_base = backtest_lightgbm_research(bars_by_symbol, cost_multiplier=1.0)
             if ml_base.get("status") == "ok":
+                # Compare the ML candidate and active rule over exactly the same evaluation dates.
+                # The rule backtest uses the same fill/cost engine but its own rule-based signals.
+                ml_sessions = int(ml_base.get("sessions", 0))
+                aligned_rule = backtest_strategy(
+                    bars_by_symbol, ACTIVE_STRATEGY, sample_days=max(20, ml_sessions)
+                )
+                comparison_keys = (
+                    "status", "sample_start", "sample_end", "sessions", "total_return_pct",
+                    "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+                    "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+                    "risk_lock_triggered", "risk_lock_date", "risk_lock_active_at_end",
+                )
+                if (
+                    aligned_rule.get("status") == "ok"
+                    and aligned_rule.get("sample_start") == ml_base.get("sample_start")
+                    and aligned_rule.get("sample_end") == ml_base.get("sample_end")
+                ):
+                    ml_base["same_period_rule_baseline"] = {
+                        key: aligned_rule[key] for key in comparison_keys if key in aligned_rule
+                    }
+                    ml_base["same_period_comparison"] = {
+                        "status": "ok",
+                        "sample_start": ml_base.get("sample_start"),
+                        "sample_end": ml_base.get("sample_end"),
+                        "sessions": ml_base.get("sessions"),
+                        "model_total_return_pct": ml_base.get("total_return_pct"),
+                        "rule_total_return_pct": aligned_rule.get("total_return_pct"),
+                        "benchmark_total_return_pct": ml_base.get("benchmark_total_return_pct"),
+                        "model_excess_return_vs_nifty_pct": ml_base.get("excess_return_vs_nifty_pct"),
+                        "rule_excess_return_vs_nifty_pct": aligned_rule.get("excess_return_vs_nifty_pct"),
+                        "model_minus_rule_return_pp": round(
+                            float(ml_base.get("total_return_pct", 0))
+                            - float(aligned_rule.get("total_return_pct", 0)), 3
+                        ),
+                        "risk_policy": "Both simulations use the existing permanent 10% drawdown lock.",
+                        "interpretation": (
+                            "Aligned-date comparison using the same initial virtual cash, next-session-open "
+                            "fills, and base transaction-cost/slippage assumptions. This is historical research, "
+                            "not evidence of future profitability."
+                        ),
+                    }
+                else:
+                    ml_base["same_period_comparison"] = {
+                        "status": "date_alignment_failed",
+                        "message": "The model and rule baseline did not produce identical evaluation dates; no direct return comparison is reported.",
+                    }
                 sensitivity: dict[str, dict[str, Any]] = {"1.0": _compact_open_source_metrics(ml_base)}
                 for multiplier in (1.5, 2.0):
                     stressed = backtest_lightgbm_research(
