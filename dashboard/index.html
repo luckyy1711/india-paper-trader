@@ -107,22 +107,21 @@ function renderStages(){
  const mult=Math.max(2,Math.min(20,Number($('stageMultiple').value)||10));
  const reservePct=Math.max(0,Math.min(95,Number($('stageReservePct').value)||0))/100;
  const count=Math.max(1,Math.min(8,Math.floor(Number($('stageCount').value)||1)));
- let active=start,protectedTotal=0,rows='';
+ let active=start,protectedTotal=0,rows='',finalTarget=start;
  for(let i=1;i<=count;i++){
-  const target=active*mult,reserve=target*reservePct,next=target-reserve;
+  const target=active*mult,reserve=target*reservePct,next=target-reserve; finalTarget=target;
   protectedTotal+=reserve;
   const total=protectedTotal+next;
   rows+='<tr><td><b>'+i+'</b></td><td>'+money(active)+'</td><td class="cyan">'+money(target)+'</td><td>'+money(reserve)+'</td><td>'+money(next)+'</td><td>'+money(protectedTotal)+'</td><td>'+money(total)+'</td></tr>';
   active=next;
  }
- const finalTarget=start*Math.pow(mult,count);
  $('stageRows').innerHTML=rows;
  $('stageProtected').textContent=money(protectedTotal);
  $('stageActive').textContent=money(active);
  $('stageTotal').textContent=money(protectedTotal+active);
- $('stageGrowth').textContent=mult.toFixed(0)+'× per stage · '+money(finalTarget)+' milestone';
+ $('stageGrowth').textContent=(finalTarget/start).toFixed(1)+'× overall · '+money(finalTarget)+' final target';
 }
-['stageStart','stageMultiple','stageReservePct','stageCount'].forEach(id=>$(id).addEventListener('input',renderStages));
+['stageStart','stageMultiple','stageReservePct','stageCount'].forEach(id=>$(id).addEventListener('input',renderStages));renderStages();
 load();setInterval(load,60000);
 </script>
 </body></html>
