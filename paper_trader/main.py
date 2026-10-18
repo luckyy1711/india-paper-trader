@@ -193,7 +193,7 @@ def run_once() -> int:
             targets: list[str] = []
             decision = "risk_lock_exit_to_cash"
         else:
-            targets = select_targets(current_bars, ACTIVE_STRATEGY, benchmark_bars=benchmark
+            targets = select_targets(current_bars, ACTIVE_STRATEGY, benchmark_bars=benchmark)
             decision = "signal_created"
         state["pending_target"] = {"signal_date": latest_market_date, "target_symbols": targets}
         state["last_signal_date"] = latest_market_date
