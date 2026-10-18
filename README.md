@@ -30,7 +30,20 @@ The constituent list is a maintained snapshot and must be updated after Nifty 50
 
 ## Research data-quality gate
 
-Research backtest metrics are withheld unless at least 45 of the 50 stock histories are available with 260 or more daily bars and the benchmark has at least 300 daily bars. A failed check is recorded explicitly in `data/research.json` and makes the research workflow fail rather than presenting incomplete results as valid. Passing this gate does not remove survivorship bias, validate the external data provider, or make backtests predictive.
+Research backtest metrics are withheld unless at least 45 of the 50 stock histories have at least 300 daily bars and the Nifty benchmark has at least 1,000 daily bars. A failed check is recorded explicitly in `data/research.json` and makes the research workflow fail rather than presenting incomplete results as valid. Passing this gate does not remove survivorship bias, validate the external data provider, or make backtests predictive.
+
+## Strategy research lab
+
+The active strategy remains `trend_momentum_126` until a candidate survives separate review and paper trial. Research compares six fixed rule sets, without automatically promoting the top row:
+
+- Trend + six-month momentum, volatility-adjusted (current baseline).
+- Medium-term momentum and a 50/200-day moving-average filter.
+- **12-1 relative strength**, excluding the most recent 21 sessions from its 12-month momentum signal. Academic background: [Jegadeesh & Titman (1993)](https://doi.org/10.1111/j.1540-6261.1993.tb04702.x).
+- **Dual 6/12-month momentum**, requiring both horizons to be positive.
+- **Nifty regime filter**, which only considers stock entries when the Nifty 50 closes above its 200-day average.
+- The existing moving-average crossover candidate.
+
+The report evaluates up to 756 recent sessions (roughly three years), compares results with Nifty 50 buy-and-hold, records calendar-year sub-periods from one continuous simulation, and includes configured costs/slippage. These are research variants, not proven profitable systems. A large grid of parameter tests is not a substitute for out-of-sample evidence: [research on backtest overfitting](https://escholarship.org/uc/item/4w1110bb) explains why the best historical variant can be a statistical mirage. The active strategy is not changed automatically.
 
 ## Cloud execution and cost controls
 

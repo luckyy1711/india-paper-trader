@@ -57,15 +57,24 @@ def _sma(values: list[float], window: int) -> float | None:
 
 
 def score_symbol(rows: list[dict[str, Any]], strategy_name: str) -> float | None:
-    """Return risk-adjusted momentum score when a symbol passes its trend filter."""
+    """Return a risk-adjusted momentum score using only bars supplied up to the signal close."""
     if strategy_name not in STRATEGIES:
         raise ValueError(f"Unknown strategy: {strategy_name}")
     params = STRATEGIES[strategy_name]
     rows = _valid_close_rows(rows)
     trend_window = int(params["trend_window"])
-    momentum_window = int(params["momentum_window"])
+    momentum_windows = [int(value) for value in params.get("momentum_windows", [params["momentum_window"]])]
+    if not momentum_windows or any(window <= 0 for window in momentum_windows):
+        return None
+    skip_recent_days = int(params.get("skip_recent_days", 0))
+    volatility_window = int(params.get("volatility_window", max(momentum_windows)))
+    required = max(
+        trend_window,
+        max(momentum_windows) + skip_recent_days + 1,
+        volatility_window + 1,
+        50 if params["filter"] == "crossover" else 1,
+    )
     closes = [row["close"] for row in rows]
-    required = max(trend_window, momentum_window + 1)
     if len(closes) < required:
         return None
 
@@ -79,16 +88,27 @@ def score_symbol(rows: list[dict[str, Any]], strategy_name: str) -> float | None
         if short_average is None or short_average <= trend_average:
             return None
 
-    prior = closes[-(momentum_window + 1)]
-    if prior <= PRICE_EPSILON:
-        return None
-    momentum = latest / prior - 1.0
-    if momentum <= 0:
-        return None
+    # Skip recent sessions for 12-1 momentum to reduce the impact of short-term reversal.
+    signal_index = len(closes) - 1 - skip_recent_days
+    momentum_values: list[float] = []
+    for window in momentum_windows:
+        prior_index = signal_index - window
+        if prior_index < 0 or closes[prior_index] <= PRICE_EPSILON:
+            return None
+        momentum = closes[signal_index] / closes[prior_index] - 1.0
+        # Dual momentum is deliberately defensive: every required horizon must be positive.
+        if not math.isfinite(momentum) or momentum <= 0:
+            return None
+        momentum_values.append(momentum)
 
-    recent = closes[-(momentum_window + 1):]
-    returns = [recent[i] / recent[i - 1] - 1.0 for i in range(1, len(recent)) if recent[i - 1] > PRICE_EPSILON]
-    if len(returns) < max(20, momentum_window // 2):
+    momentum = statistics.fmean(momentum_values)
+    recent = closes[-(volatility_window + 1):]
+    returns = [
+        recent[i] / recent[i - 1] - 1.0
+        for i in range(1, len(recent))
+        if recent[i - 1] > PRICE_EPSILON
+    ]
+    if len(returns) < max(20, volatility_window // 2):
         return None
     volatility = statistics.pstdev(returns) * math.sqrt(252)
     if not math.isfinite(volatility) or volatility <= PRICE_EPSILON:
@@ -100,10 +120,24 @@ def select_targets(
     bars_by_symbol: dict[str, list[dict[str, Any]]],
     strategy_name: str = "trend_momentum_126",
     max_positions: int = MAX_POSITIONS,
+    benchmark_bars: list[dict[str, Any]] | None = None,
 ) -> list[str]:
-    """Select a ranked, long-only target list using information available by the close."""
+    """Select ranked stock targets and apply optional, close-known benchmark regime filters."""
+    if strategy_name not in STRATEGIES:
+        raise ValueError(f"Unknown strategy: {strategy_name}")
+    params = STRATEGIES[strategy_name]
+    if params.get("market_regime_filter"):
+        benchmark_rows = _valid_close_rows(benchmark_bars or [])
+        regime_window = int(params.get("market_regime_window", params["trend_window"]))
+        benchmark_closes = [row["close"] for row in benchmark_rows]
+        regime_average = _sma(benchmark_closes, regime_window)
+        if regime_average is None or benchmark_closes[-1] <= regime_average:
+            return []
+
     ranked: list[tuple[float, str]] = []
     for symbol, rows in bars_by_symbol.items():
+        if symbol == "__BENCHMARK__":
+            continue
         score = score_symbol(rows, strategy_name)
         if score is not None and math.isfinite(score):
             ranked.append((score, symbol))

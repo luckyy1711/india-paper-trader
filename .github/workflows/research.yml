@@ -6,6 +6,8 @@ on:
     paths:
       - 'paper_trader/market_data.py'
       - 'paper_trader/symbols.py'
+      - 'paper_trader/core.py'
+      - 'paper_trader/main.py'
       - 'paper_trader/research.py'
       - 'paper_trader/config.py'
       - 'tests/**'

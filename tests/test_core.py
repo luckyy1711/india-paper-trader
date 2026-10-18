@@ -8,7 +8,7 @@ from paper_trader.core import (
     score_symbol,
     select_targets,
 )
-from paper_trader.config import MAX_POSITION_WEIGHT, MAX_TOTAL_EXPOSURE
+from paper_trader.config import ACTIVE_STRATEGY, MAX_POSITION_WEIGHT, MAX_TOTAL_EXPOSURE, STRATEGIES
 from paper_trader.symbols import NIFTY50_SYMBOLS
 
 
@@ -34,6 +34,38 @@ class CoreTests(unittest.TestCase):
         self.assertIsNotNone(score_symbol(trend, "trend_momentum_126"))
         self.assertIsNone(score_symbol(flat, "trend_momentum_126"))
         self.assertIsNone(score_symbol(falling, "trend_momentum_126"))
+
+
+    def test_new_strategy_candidates_are_configured_but_not_auto_promoted(self):
+        self.assertIn("relative_strength_12_1", STRATEGIES)
+        self.assertIn("dual_momentum_6_12", STRATEGIES)
+        self.assertIn("nifty_regime_momentum_126", STRATEGIES)
+        self.assertEqual(ACTIVE_STRATEGY, "trend_momentum_126")
+
+    def test_12_1_and_dual_momentum_need_long_enough_positive_history(self):
+        rising = make_bars(400, lambda i: 100 + i * 0.2 + (i % 7) * 0.05)
+        too_short = rising[:260]
+        self.assertIsNotNone(score_symbol(rising, "relative_strength_12_1"))
+        self.assertIsNotNone(score_symbol(rising, "dual_momentum_6_12"))
+        self.assertIsNone(score_symbol(too_short, "relative_strength_12_1"))
+        self.assertIsNone(score_symbol(too_short, "dual_momentum_6_12"))
+
+    def test_benchmark_regime_filter_blocks_long_entries_below_200_sma(self):
+        stock = make_bars(320, lambda i: 100 + i * 0.5)
+        falling_market = make_bars(320, lambda i: 1000 - i * 1.5)
+        rising_market = make_bars(320, lambda i: 500 + i * 2)
+        self.assertEqual(
+            select_targets({"AAA": stock}, "nifty_regime_momentum_126", benchmark_bars=falling_market),
+            [],
+        )
+        self.assertEqual(
+            select_targets({"AAA": stock}, "nifty_regime_momentum_126", benchmark_bars=rising_market),
+            ["AAA"],
+        )
+        self.assertEqual(
+            select_targets({"AAA": stock}, "nifty_regime_momentum_126"),
+            [],
+        )
 
     def test_target_selection_is_deterministic(self):
         bars = {
