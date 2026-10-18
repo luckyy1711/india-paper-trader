@@ -15,6 +15,7 @@ from .config import (
     INITIAL_CASH,
     MAX_POSITIONS,
     MIN_RESEARCH_BENCHMARK_BARS,
+    SLIPPAGE_RATE,
     TRANSACTION_COST_RATE,
 )
 from .core import benchmark_dates, execute_rebalance, mark_to_market, new_state
