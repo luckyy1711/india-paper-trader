@@ -20,7 +20,7 @@ from .config import (
 )
 from .core import benchmark_dates, execute_rebalance, mark_to_market, new_state
 
-MODEL_NAME = "qlib_lightgbm_alpha"
+MODEL_NAME = "lightgbm_relative_alpha"
 MODEL_FAMILY = "LightGBM gradient-boosted decision trees"
 SOURCE_PROJECT = "https://github.com/microsoft/qlib"
 LIGHTGBM_PROJECT = "https://github.com/lightgbm-org/LightGBM"
