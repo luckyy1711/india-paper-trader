@@ -72,6 +72,9 @@ class SimulationReportTests(unittest.TestCase):
         self.assertEqual(report["result"]["status"], "ok")
         self.assertEqual(report["result"]["end_equity"], 9000)
         self.assertEqual(report["configuration"]["cost_multiplier"], 2.0)
+        self.assertTrue(report["safety"]["isolated_from_live_paper_portfolio"])
+        self.assertFalse(report["safety"]["broker_orders_enabled"])
+        self.assertFalse(report["safety"]["active_strategy_changed"])
 
 
 if __name__ == "__main__":
