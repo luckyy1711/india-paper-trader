@@ -64,12 +64,15 @@ class ResearchQualityGateTests(unittest.TestCase):
             report = build_research_report({"__BENCHMARK__": benchmark, **stocks})
 
         self.assertEqual(report["status"], "ok")
-        self.assertEqual(mocked.call_count, len(STRATEGIES) * 5)
+        self.assertEqual(mocked.call_count, len(STRATEGIES) * 9)
         for result in report["results"]:
             self.assertIn("robustness", result)
             self.assertEqual(set(result["robustness"]["period_sensitivity"]), {"252", "504", "756"})
             self.assertEqual(set(result["robustness"]["cost_sensitivity"]), {"1.0", "1.5", "2.0"})
             self.assertEqual(result["robustness"]["cost_scenarios_tested"], 3)
+            self.assertEqual(result["walk_forward"]["status"], "ok")
+            self.assertEqual(result["walk_forward"]["completed_folds"], 4)
+            self.assertEqual(len(result["walk_forward"]["folds"]), 4)
         self.assertEqual(report["active_strategy"], "trend_momentum_126")
         self.assertFalse(report["active_strategy_changes_automatically"])
 
