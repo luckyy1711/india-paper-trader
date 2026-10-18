@@ -3,7 +3,7 @@
   "active_strategy_changes_automatically": false,
   "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
   "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
-  "generated_at_utc": "2026-10-18T13:52:55+00:00",
+  "generated_at_utc": "2026-10-18T14:00:11+00:00",
   "market_data_coverage": {
     "latest_common_signal_date": "2026-10-15",
     "max_stock_bars": 1255,
