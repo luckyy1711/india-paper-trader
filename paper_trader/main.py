@@ -14,7 +14,6 @@ from typing import Any
 from .config import ACTIVE_STRATEGY, MIN_CURRENT_SYMBOL_COVERAGE
 from .core import benchmark_dates, execute_rebalance, first_session_after, mark_to_market, new_state, select_targets
 from .market_data import BENCHMARK_KEY, download_market_data
-from .research import build_research_report
 from .symbols import NIFTY50_SYMBOLS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +21,6 @@ DATA_DIR = ROOT / "data"
 STATE_PATH = DATA_DIR / "state.json"
 TRADES_PATH = DATA_DIR / "trades.csv"
 RUNS_PATH = DATA_DIR / "runs.jsonl"
-RESEARCH_PATH = DATA_DIR / "research.json"
 IST = ZoneInfo("Asia/Kolkata")
 TRADE_FIELDS = ["date", "signal_date", "side", "symbol", "quantity", "price", "gross_value", "costs", "reason", "cash_after"]
 
@@ -201,15 +199,9 @@ def run_once() -> int:
         targets = list((state.get("pending_target") or {}).get("target_symbols", []))
         decision = "already_processed_this_session"
 
-    # Research is informational only: it cannot modify the active strategy or portfolio targets.
-    research_status = "not_run"
-    try:
-        report = build_research_report(bars)
-        _atomic_json(RESEARCH_PATH, report)
-        research_status = "updated"
-    except Exception as exc:
-        research_status = f"error:{type(exc).__name__}"
-        print(f"Research warning: {research_status}")
+    # Heavy historical and LightGBM research runs in research.yml, never in the daily trader.
+    # Do not overwrite the research report with a rule-only or partial report here.
+    research_status = "separate_research_workflow"
 
     _atomic_json(STATE_PATH, state)
     record = {
