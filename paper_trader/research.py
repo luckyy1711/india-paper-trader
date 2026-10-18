@@ -17,6 +17,7 @@ from .config import (
     STRATEGIES,
 )
 from .core import benchmark_dates, execute_rebalance, mark_to_market, score_symbol, select_targets, new_state
+from .symbols import NIFTY50_SYMBOLS
 
 
 def _metrics(equities: list[float], trade_count: int, session_count: int) -> dict[str, Any]:
