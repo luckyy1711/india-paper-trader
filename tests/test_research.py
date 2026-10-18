@@ -53,6 +53,10 @@ class ResearchQualityGateTests(unittest.TestCase):
         self.assertIn("excess_return_vs_nifty_pct", report)
         self.assertTrue(report["yearly_results"])
         self.assertTrue(all("benchmark_total_return_pct" in item for item in report["yearly_results"]))
+        self.assertIn("risk_lock_triggered", report)
+        self.assertFalse(report["risk_lock_triggered"])
+        self.assertIsNone(report["risk_lock_date"])
+        self.assertEqual(report["post_lock_flat_sessions"], 0)
 
 
 if __name__ == "__main__":
