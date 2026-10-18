@@ -53,7 +53,7 @@ GitHub Actions is a scheduler, not a 24/7 server. Runs can be delayed, fail, or 
 python -m unittest discover -s tests -v
 ```
 
-To inspect the live workflow, open the repository's **Actions** tab. From an iPhone, `data/state.json`, `data/trades.csv`, `data/runs.jsonl`, and `data/research.json` are readable in GitHub. A hosted interactive dashboard is intentionally a later phase so that portfolio data is not accidentally made public.
+### Interactive dashboard\n\nA dark, responsive dashboard with strategy-return graphs, a TradingView Nifty chart, portfolio metrics, research coverage warnings, and the trade ledger is in `dashboard/`. From the repository root, run `python -m http.server 8000`, then open `http://localhost:8000/dashboard/`. It refreshes saved data every 60 seconds. See `dashboard/README.md`. This is read-only and requires internet access for chart libraries. Keep the repository private: the dashboard reads the private simulation data and should not be published to a public host without deliberately reviewing what would be exposed.\n\nTo inspect the automated run, open the repository's **Actions** tab.
 
 ## Future mini-PC migration
 
