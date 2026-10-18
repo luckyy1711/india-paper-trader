@@ -1,6 +1,56 @@
 {
-  "status": "not_run_yet",
   "active_strategy": "trend_momentum_126",
   "active_strategy_changes_automatically": false,
-  "message": "A report is generated after the first successful market-data run."
+  "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
+  "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
+  "generated_at_utc": "2026-10-18T13:20:47+00:00",
+  "results": [
+    {
+      "annualized_return_pct": 0.0,
+      "annualized_volatility_pct": 0.0,
+      "end_equity": 10000.0,
+      "max_drawdown_pct": 0.0,
+      "sample_end": "2026-10-16",
+      "sample_start": "2025-10-08",
+      "sessions": 252,
+      "sharpe_approx": 0.0,
+      "start_equity": 10000.0,
+      "status": "ok",
+      "strategy": "trend_momentum_126",
+      "total_return_pct": 0.0,
+      "trade_count": 0
+    },
+    {
+      "annualized_return_pct": 0.0,
+      "annualized_volatility_pct": 0.0,
+      "end_equity": 10000.0,
+      "max_drawdown_pct": 0.0,
+      "sample_end": "2026-10-16",
+      "sample_start": "2025-10-08",
+      "sessions": 252,
+      "sharpe_approx": 0.0,
+      "start_equity": 10000.0,
+      "status": "ok",
+      "strategy": "medium_momentum_63",
+      "total_return_pct": 0.0,
+      "trade_count": 0
+    },
+    {
+      "annualized_return_pct": 0.0,
+      "annualized_volatility_pct": 0.0,
+      "end_equity": 10000.0,
+      "max_drawdown_pct": 0.0,
+      "sample_end": "2026-10-16",
+      "sample_start": "2025-10-08",
+      "sessions": 252,
+      "sharpe_approx": 0.0,
+      "start_equity": 10000.0,
+      "status": "ok",
+      "strategy": "ma_crossover_50_200",
+      "total_return_pct": 0.0,
+      "trade_count": 0
+    }
+  ],
+  "sample_sessions_available": 1236,
+  "selection_note": "Results are a recent walk-forward sample, include simplified transaction costs and slippage, and are not proof of future returns. Current constituents create survivorship bias. Candidates require a separate paper-trading trial before any promotion."
 }
