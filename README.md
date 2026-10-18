@@ -86,6 +86,15 @@ A dark, responsive dashboard with strategy-return graphs, a TradingView Nifty ch
 
 To inspect the automated run, open the repository's **Actions** tab.
 
+## On-demand controls and historical simulator
+
+The **Run & Simulate** dashboard tab links to two authenticated GitHub Actions workflows:
+
+- **India Paper Trader**: use `workflow_dispatch` with `paper_once` to request one simulated session, or `validate_only` to run tests without changing portfolio state. The existing weekday schedule remains enabled. The engine is paper-only and refuses to process a session when current data is missing or stale.
+- **Historical Market Simulator**: choose a rule strategy or `lightgbm_relative_alpha`, starting virtual capital, evaluation window (252/504/756/1008 sessions), and cost/slippage multiplier (1x/1.5x/2x). It fetches historical bars, applies a coverage gate, replays the selected strategy chronologically, and saves `data/simulation.json`. The LightGBM option retrains at historical points and excludes labels until their full 21-session outcome has matured.
+
+The historical simulator is isolated from `data/state.json` and `data/trades.csv`; it cannot change the active strategy or execute broker orders. When the workflow finishes, refresh the dashboard to read the saved result. The dashboard does not contain a GitHub token: controls open the GitHub Actions page, where you must be signed in and explicitly click **Run workflow**. Research results are historical estimates, not forecasts or guarantees.
+
 ## Future mini-PC migration
 
 The core engine is independent of GitHub Actions. A future Linux mini PC can run the same package from a persistent local folder with a system scheduler. Migrate the state and trade ledger together; do not start the cloud and mini-PC schedulers at the same time, or they could process the same signals twice.
