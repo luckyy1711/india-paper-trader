@@ -1,8 +1,8 @@
 import unittest
 from datetime import date, timedelta
 
-from paper_trader.config import STRATEGIES
-from paper_trader.research import build_research_report
+from paper_trader.config import MIN_RESEARCH_BENCHMARK_BARS, STRATEGIES
+from paper_trader.research import backtest_strategy, build_research_report
 
 
 def make_bars(count, price):
@@ -33,6 +33,26 @@ class ResearchQualityGateTests(unittest.TestCase):
             self.assertNotIn("total_return_pct", result)
             self.assertNotIn("sharpe_approx", result)
         self.assertIn("metrics are withheld", report["data_quality"]["message"])
+
+
+    def test_research_gate_requires_multi_year_history(self):
+        self.assertEqual(MIN_RESEARCH_BENCHMARK_BARS, 1000)
+        report = build_research_report({
+            "__BENCHMARK__": make_bars(999, 100),
+            **{f"S{i}": make_bars(350, 50 + i) for i in range(50)},
+        })
+        self.assertEqual(report["status"], "blocked_insufficient_market_data")
+        self.assertTrue(any("benchmark has only 999" in item for item in report["data_quality"]["failed_checks"]))
+
+    def test_backtest_compares_to_benchmark_and_emits_yearly_breakdown(self):
+        benchmark = make_bars(420, 100)
+        stocks = {f"S{i}": make_bars(420, 70 + i * 3 + i * 0.1) for i in range(50)}
+        report = backtest_strategy({"__BENCHMARK__": benchmark, **stocks}, "trend_momentum_126", sample_days=40)
+        self.assertEqual(report["status"], "ok")
+        self.assertIn("benchmark_total_return_pct", report)
+        self.assertIn("excess_return_vs_nifty_pct", report)
+        self.assertTrue(report["yearly_results"])
+        self.assertTrue(all("benchmark_total_return_pct" in item for item in report["yearly_results"]))
 
 
 if __name__ == "__main__":
