@@ -12,7 +12,7 @@ python -m http.server 8000
 
 Open **http://localhost:8000/dashboard/** in your browser. Stop the server with Ctrl+C.
 
-The page refreshes data every 60 seconds. It uses Chart.js and a TradingView chart from their hosted scripts/widgets, so an internet connection is required. Portfolio and strategy report files remain in this repository; do not publish them publicly unless you deliberately want those records exposed.
+The page refreshes data every 60 seconds. The **Compounding lab** tab is a scenario calculator for staged milestones and protected reserves; it is not a forecast or a backtest and does not change portfolio state. It also labels future asset-universe expansion as a research plan, not as currently enabled trading. It uses Chart.js and a TradingView chart from their hosted scripts/widgets, so an internet connection is required. Portfolio and strategy report files remain in this repository; do not publish them publicly unless you deliberately want those records exposed.
 
 ## Important data warning
 
