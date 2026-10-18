@@ -9,7 +9,7 @@ import statistics
 from typing import Any
 
 from .config import ACTIVE_STRATEGY, INITIAL_CASH, STRATEGIES
-from .core import benchmark_dates, execute_rebalance, mark_to_market, select_targets, new_state
+from .core import benchmark_dates, execute_rebalance, mark_to_market, score_symbol, select_targets, new_state
 
 
 def _metrics(equities: list[float], trade_count: int, session_count: int) -> dict[str, Any]:
@@ -147,11 +147,30 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
     successful = [item for item in results if item.get("status") == "ok"]
     successful.sort(key=lambda item: (item.get("sharpe_approx", 0), item.get("total_return_pct", 0)), reverse=True)
     other_results = [item for item in results if item.get("status") != "ok"]
+    stock_rows = {symbol: rows for symbol, rows in bars_by_symbol.items() if symbol != "__BENCHMARK__"}
+    row_counts = {symbol: len(rows) for symbol, rows in stock_rows.items()}
+    coverage = {
+        "stock_symbols_downloaded": len(stock_rows),
+        "stock_symbols_with_260_or_more_bars": sum(count >= 260 for count in row_counts.values()),
+        "stock_symbols_with_200_or_more_bars": sum(count >= 200 for count in row_counts.values()),
+        "min_stock_bars": min(row_counts.values()) if row_counts else 0,
+        "max_stock_bars": max(row_counts.values()) if row_counts else 0,
+        "symbols_scored_on_latest_common_signal_date": 0,
+        "latest_common_signal_date": dates[-2] if len(dates) >= 2 else None,
+    }
+    if coverage["latest_common_signal_date"]:
+        signal_date = coverage["latest_common_signal_date"]
+        for symbol, rows in stock_rows.items():
+            history = [row for row in rows if str(row.get("date", "")) <= signal_date]
+            if any(score_symbol(history, strategy_name) is not None for strategy_name in STRATEGIES):
+                coverage["symbols_scored_on_latest_common_signal_date"] += 1
+
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
         "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
         "sample_sessions_available": len(dates),
+        "market_data_coverage": coverage,
         "active_strategy": ACTIVE_STRATEGY,
         "active_strategy_changes_automatically": False,
         "selection_note": "Recent walk-forward research only, with simplified costs/slippage. Current constituents create survivorship bias. Candidate strategies never auto-promote; paper-trial them separately. Diagnostic counters are included to help explain any zero-trade result.",
