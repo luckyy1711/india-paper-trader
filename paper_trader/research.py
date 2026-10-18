@@ -1,0 +1,150 @@
+"""Historical comparison for research only; it never changes the active strategy."""
+
+from __future__ import annotations
+
+from bisect import bisect_right
+from datetime import datetime, timezone
+from math import sqrt
+import statistics
+from typing import Any
+
+from .config import ACTIVE_STRATEGY, INITIAL_CASH, STRATEGIES
+from .core import benchmark_dates, execute_rebalance, mark_to_market, select_targets, new_state
+
+
+def _metrics(equities: list[float], trade_count: int, session_count: int) -> dict[str, Any]:
+    if len(equities) < 2:
+        return {"status": "insufficient_history", "trade_count": trade_count, "sessions": session_count}
+    initial = equities[0]
+    final = equities[-1]
+    returns = [equities[i] / equities[i - 1] - 1.0 for i in range(1, len(equities)) if equities[i - 1] > 0]
+    running_peak = initial
+    max_drawdown = 0.0
+    for value in equities:
+        running_peak = max(running_peak, value)
+        if running_peak > 0:
+            max_drawdown = max(max_drawdown, (running_peak - value) / running_peak)
+    volatility = statistics.pstdev(returns) * sqrt(252) if len(returns) > 1 else 0.0
+    mean_daily = statistics.fmean(returns) if returns else 0.0
+    daily_vol = statistics.pstdev(returns) if len(returns) > 1 else 0.0
+    sharpe = (mean_daily / daily_vol * sqrt(252)) if daily_vol > 1e-12 else 0.0
+    total_return = final / initial - 1.0 if initial > 0 else 0.0
+    years = max(len(returns) / 252.0, 1.0 / 252.0)
+    cagr = (final / initial) ** (1.0 / years) - 1.0 if final > 0 and initial > 0 else -1.0
+    return {
+        "status": "ok",
+        "sessions": len(returns),
+        "trade_count": trade_count,
+        "start_equity": round(initial, 2),
+        "end_equity": round(final, 2),
+        "total_return_pct": round(total_return * 100.0, 3),
+        "annualized_return_pct": round(cagr * 100.0, 3),
+        "annualized_volatility_pct": round(volatility * 100.0, 3),
+        "sharpe_approx": round(sharpe, 3),
+        "max_drawdown_pct": round(max_drawdown * 100.0, 3),
+    }
+
+
+def backtest_strategy(
+    bars_by_symbol: dict[str, list[dict[str, Any]]],
+    strategy_name: str,
+    sample_days: int = 252,
+) -> dict[str, Any]:
+    """Walk forward through the recent sample; signals at close, fills next session open."""
+    dates = benchmark_dates(bars_by_symbol)
+    if strategy_name not in STRATEGIES:
+        raise ValueError(f"Unknown strategy: {strategy_name}")
+    if len(dates) < 300:
+        return {"status": "insufficient_history", "sessions_available": len(dates), "trade_count": 0}
+
+    indexed: dict[str, tuple[list[str], dict[str, dict[str, Any]]]] = {}
+    for symbol, rows in bars_by_symbol.items():
+        if symbol == "__BENCHMARK__":
+            continue
+        rowmap = {str(row["date"]): row for row in rows}
+        indexed[symbol] = (sorted(rowmap), rowmap)
+
+    state = new_state()
+    trades: list[dict[str, Any]] = []
+    equities = [INITIAL_CASH]
+    start_index = max(260, len(dates) - max(20, sample_days) - 1)
+    first_signal_index = start_index
+
+    for idx in range(first_signal_index, len(dates) - 1):
+        signal_date = dates[idx]
+        fill_date = dates[idx + 1]
+        prefix_data: dict[str, list[dict[str, Any]]] = {}
+        for symbol, (symbol_dates, rowmap) in indexed.items():
+            end = bisect_right(symbol_dates, signal_date)
+            prefix_dates = symbol_dates[:end]
+            prefix_data[symbol] = [rowmap[day] for day in prefix_dates]
+
+        targets = [] if state.get("risk_locked", False) else select_targets(prefix_data, strategy_name)
+        opens: dict[str, float] = {}
+        closes: dict[str, float] = {}
+        missing_fill_for_holding = False
+        for symbol, (_, rowmap) in indexed.items():
+            row = rowmap.get(fill_date)
+            if row is not None:
+                try:
+                    open_price = float(row["open"])
+                    close_price = float(row["close"])
+                    if open_price > 0 and close_price > 0:
+                        opens[symbol] = open_price
+                        closes[symbol] = close_price
+                except (TypeError, ValueError, KeyError):
+                    pass
+        if any(symbol not in opens for symbol in state["positions"]):
+            missing_fill_for_holding = True
+        if any(symbol not in opens for symbol in targets):
+            missing_fill_for_holding = True
+        if missing_fill_for_holding:
+            # Conservatively leave positions unchanged for this session instead of inventing fills.
+            latest_closes = dict(closes)
+            for symbol in state["positions"]:
+                if symbol not in latest_closes:
+                    prior = indexed[symbol][1]
+                    previous_dates = [day for day in prior if day < fill_date]
+                    if previous_dates:
+                        latest_closes[symbol] = float(prior[previous_dates[-1]]["close"])
+            try:
+                nav = mark_to_market(state, latest_closes)["equity"]
+            except (ValueError, KeyError):
+                nav = equities[-1]
+            equities.append(nav)
+            continue
+
+        day_trades = execute_rebalance(state, targets, opens, fill_date, signal_date)
+        trades.extend(day_trades)
+        nav = mark_to_market(state, closes)["equity"]
+        equities.append(nav)
+
+    metrics = _metrics(equities, len(trades), len(equities) - 1)
+    metrics["strategy"] = strategy_name
+    metrics["sample_start"] = dates[first_signal_index] if first_signal_index < len(dates) else None
+    metrics["sample_end"] = dates[-1]
+    return metrics
+
+
+def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    dates = benchmark_dates(bars_by_symbol)
+    results = []
+    for strategy_name in STRATEGIES:
+        try:
+            results.append(backtest_strategy(bars_by_symbol, strategy_name))
+        except Exception as exc:  # research failure must not authorize live trades or alter active strategy
+            results.append({"strategy": strategy_name, "status": "error", "error": type(exc).__name__})
+    successful = [item for item in results if item.get("status") == "ok"]
+    # Show the best observed Sharpe first; this is descriptive only, not an auto-promotion rule.
+    successful.sort(key=lambda item: (item.get("sharpe_approx", 0), item.get("total_return_pct", 0)), reverse=True)
+    other_results = [item for item in results if item.get("status") != "ok"]
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
+        "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
+        "sample_sessions_available": len(dates),
+        "active_strategy": ACTIVE_STRATEGY,
+        "active_strategy_changes_automatically": False,
+        "selection_note": "Results are a recent walk-forward sample, include simplified transaction costs and slippage, and are not proof of future returns. Current constituents create survivorship bias. Candidates require a separate paper-trading trial before any promotion.",
+        "results": successful + other_results,
+    }

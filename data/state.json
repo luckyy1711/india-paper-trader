@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "initial_cash": 10000.0,
+  "cash": 10000.0,
+  "positions": {},
+  "pending_target": null,
+  "last_signal_date": null,
+  "last_mark_date": null,
+  "peak_equity": 10000.0,
+  "risk_locked": false
+}

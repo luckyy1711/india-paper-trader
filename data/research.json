@@ -1,0 +1,6 @@
+{
+  "status": "not_run_yet",
+  "active_strategy": "trend_momentum_126",
+  "active_strategy_changes_automatically": false,
+  "message": "A report is generated after the first successful market-data run."
+}
