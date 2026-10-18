@@ -6,6 +6,15 @@ on:
     # checked from the presence of today's benchmark candle; no candle means skip.
     - cron: "45 11 * * 1-5"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run one simulated paper-trading session or validate without trading"
+        required: true
+        type: choice
+        default: paper_once
+        options:
+          - paper_once
+          - validate_only
 
 permissions:
   contents: write
@@ -36,7 +45,11 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Run one paper-trading session
+        if: github.event_name == 'schedule' || inputs.mode == 'paper_once'
         run: python -m paper_trader.main
+      - name: Skip portfolio changes in validate-only mode
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate_only'
+        run: echo "Validation-only run requested; no market data download or portfolio changes were made."
 
       - name: Save virtual portfolio and run logs to the private repository
         if: always()
