@@ -237,6 +237,67 @@ def backtest_strategy(
     return metrics
 
 
+
+def _walk_forward_checks(
+    bars_by_symbol: dict[str, list[dict[str, Any]]],
+    strategy_name: str,
+    fold_sessions: int = 126,
+    max_folds: int = 4,
+) -> dict[str, Any]:
+    """Evaluate a fixed rule on consecutive, non-overlapping recent half-year test folds."""
+    dates = benchmark_dates(bars_by_symbol)
+    if fold_sessions < 20 or max_folds < 2:
+        raise ValueError("Walk-forward checks require at least 20 sessions per fold and two folds")
+    if len(dates) < 260 + fold_sessions * max_folds:
+        return {
+            "status": "insufficient_history",
+            "fold_sessions": fold_sessions,
+            "requested_folds": max_folds,
+            "completed_folds": 0,
+            "folds": [],
+        }
+
+    folds: list[dict[str, Any]] = []
+    for fold_number in range(max_folds):
+        end_index = len(dates) - 1 - (max_folds - 1 - fold_number) * fold_sessions
+        end_date = dates[end_index]
+        prefix = {
+            symbol: [row for row in rows if str(row.get("date", "")) <= end_date]
+            for symbol, rows in bars_by_symbol.items()
+        }
+        candidate = backtest_strategy(prefix, strategy_name, sample_days=fold_sessions)
+        keys = (
+            "status", "sample_start", "sample_end", "sessions", "total_return_pct",
+            "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+            "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+            "risk_lock_triggered", "risk_lock_date",
+        )
+        folds.append({
+            "fold": fold_number + 1,
+            "test_end": end_date,
+            **{key: candidate.get(key) for key in keys if key in candidate},
+        })
+
+    valid = [fold for fold in folds if fold.get("status") == "ok"]
+    return {
+        "status": "ok" if len(valid) == max_folds else "partial",
+        "fold_sessions": fold_sessions,
+        "requested_folds": max_folds,
+        "completed_folds": len(valid),
+        "positive_return_folds": sum(float(fold.get("total_return_pct", 0)) > 0 for fold in valid),
+        "folds_beating_nifty": sum(
+            fold.get("excess_return_vs_nifty_pct") is not None
+            and float(fold["excess_return_vs_nifty_pct"]) > 0 for fold in valid
+        ),
+        "folds": folds,
+        "interpretation": (
+            "Chronological fixed-rule validation on consecutive, non-overlapping test periods. "
+            "The strategy is not re-tuned between folds; each fold starts with a fresh simulated portfolio, "
+            "so this is not a single deployable compounded equity curve and does not prove future profitability."
+        ),
+    }
+
+
 def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     """Build a multi-year comparison and withhold results when input coverage is inadequate."""
     dates = benchmark_dates(bars_by_symbol)
@@ -343,6 +404,9 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
                     "the universe has survivorship bias, and the benchmark excludes dividends."
                 ),
             }
+            item["walk_forward"] = _walk_forward_checks(
+                bars_by_symbol, strategy_name, fold_sessions=126, max_folds=4
+            )
 
         successful = [item for item in results if item.get("status") == "ok"]
         # Preserve baseline ordering; robustness is a diagnostic, not a new automatic ranking rule.
@@ -372,6 +436,7 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "benchmark": "Each strategy is compared against Nifty 50 price-index close-to-close return over the same sample.",
             "yearly_breakdown": "Calendar-year sub-periods from the same continuous simulation; partial first/last years are possible.",
             "robustness_checks": "Each fixed strategy is re-tested over 252-, 504-, and 756-session windows, plus 1.5x and 2.0x transaction-cost/slippage scenarios. These overlapping windows are sensitivity checks, not independent validation.",
+            "walk_forward_checks": "Each strategy is tested on four consecutive 126-session chronological folds with no overlap between return intervals. Each fold uses a fresh simulated portfolio; results are not one compounded equity curve and do not prove future profitability.",
             "candidate_policy": "Candidates are research-only and never automatically replace the active strategy.",
             "limitations": [
                 "Current index constituents introduce survivorship bias.",

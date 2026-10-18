@@ -24,7 +24,7 @@ concurrency:
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -62,7 +62,10 @@ jobs:
           PY
 
       - name: Save research report
-        if: always()
+        # Only publish generated reports from main; feature-branch runs are validation runs.
+        # This prevents multiple queued research runs from pushing competing report commits
+        # to the same feature branch.
+        if: always() && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
