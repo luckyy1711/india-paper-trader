@@ -43,7 +43,7 @@ The active strategy remains `trend_momentum_126` until a candidate survives sepa
 - **Nifty regime filter**, which only considers stock entries when the Nifty 50 closes above its 200-day average.
 - The existing moving-average crossover candidate.
 
-The report evaluates up to 756 recent sessions (roughly three years), compares results with Nifty 50 buy-and-hold, records calendar-year sub-periods from one continuous simulation, and includes configured costs/slippage. These are research variants, not proven profitable systems. A large grid of parameter tests is not a substitute for out-of-sample evidence: [research on backtest overfitting](https://escholarship.org/uc/item/4w1110bb) explains why the best historical variant can be a statistical mirage. The active strategy is not changed automatically.
+The report evaluates up to 756 recent sessions (roughly three years), compares results with Nifty 50 buy-and-hold, records calendar-year sub-periods from one continuous simulation, and includes configured costs/slippage. Each strategy is also checked over 252-, 504-, and 756-session windows and under 1.5x/2.0x cost-and-slippage stress. These checks help expose fragility; overlapping periods are not independent out-of-sample tests, and they do not prove profitability. A large grid of parameter tests is not a substitute for out-of-sample evidence: [research on backtest overfitting](https://escholarship.org/uc/item/4w1110bb) explains why the best historical variant can be a statistical mirage. The active strategy is not changed automatically.
 
 ## Cloud execution and cost controls
 

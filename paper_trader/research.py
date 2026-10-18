@@ -104,8 +104,9 @@ def backtest_strategy(
     bars_by_symbol: dict[str, list[dict[str, Any]]],
     strategy_name: str,
     sample_days: int = 756,
+    cost_multiplier: float = 1.0,
 ) -> dict[str, Any]:
-    """Walk forward over about 3 years: close-known signals fill at the next session open."""
+    """Walk forward; close-known signals fill next session open, with optional cost stress."""
     dates = benchmark_dates(bars_by_symbol)
     if strategy_name not in STRATEGIES:
         raise ValueError(f"Unknown strategy: {strategy_name}")
@@ -192,7 +193,7 @@ def backtest_strategy(
             record_session(fill_date)
             continue
 
-        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date))
+        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier))
         nav = mark_to_market(state, closes)["equity"]
         equity_points.append({"date": fill_date, "equity": nav})
         record_session(fill_date)
@@ -291,7 +292,60 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
                 results.append(backtest_strategy(bars_by_symbol, name))
             except Exception as exc:
                 results.append({"strategy": name, "status": "error", "error": type(exc).__name__})
+        # Keep rules fixed; test evaluation-window and trading-cost sensitivity rather than fishing for parameters.
+        for item in results:
+            if item.get("status") != "ok":
+                continue
+            strategy_name = item["strategy"]
+
+            def compact_metrics(candidate: dict[str, Any]) -> dict[str, Any]:
+                keys = (
+                    "status", "sample_start", "sample_end", "sessions", "total_return_pct",
+                    "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+                    "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+                )
+                return {key: candidate.get(key) for key in keys if key in candidate}
+
+            period_checks = {}
+            for days in (252, 504):
+                candidate = backtest_strategy(bars_by_symbol, strategy_name, sample_days=days)
+                period_checks[str(days)] = compact_metrics(candidate)
+
+            cost_checks = {}
+            for multiplier in (1.5, 2.0):
+                candidate = backtest_strategy(
+                    bars_by_symbol, strategy_name, sample_days=756, cost_multiplier=multiplier
+                )
+                cost_checks[str(multiplier)] = compact_metrics(candidate)
+
+            all_periods = {"756": compact_metrics(item), **period_checks}
+            all_costs = {"1.0": compact_metrics(item), **cost_checks}
+            valid_periods = [
+                result for result in all_periods.values()
+                if result.get("status") == "ok" and isinstance(result.get("total_return_pct"), (int, float))
+            ]
+            valid_costs = [
+                result for result in all_costs.values()
+                if result.get("status") == "ok" and isinstance(result.get("total_return_pct"), (int, float))
+            ]
+            item["robustness"] = {
+                "period_sensitivity": all_periods,
+                "cost_sensitivity": all_costs,
+                "positive_return_periods": sum(result["total_return_pct"] > 0 for result in valid_periods),
+                "periods_with_excess_return_over_nifty": sum(
+                    result.get("excess_return_vs_nifty_pct") is not None
+                    and result["excess_return_vs_nifty_pct"] > 0 for result in valid_periods
+                ),
+                "positive_return_cost_scenarios": sum(result["total_return_pct"] > 0 for result in valid_costs),
+                "cost_scenarios_tested": len(valid_costs),
+                "interpretation": (
+                    "Sensitivity checks only, not independent out-of-sample proof. Periods overlap, "
+                    "the universe has survivorship bias, and the benchmark excludes dividends."
+                ),
+            }
+
         successful = [item for item in results if item.get("status") == "ok"]
+        # Preserve baseline ordering; robustness is a diagnostic, not a new automatic ranking rule.
         successful.sort(
             key=lambda item: (item.get("excess_return_vs_nifty_pct", -999), item.get("sharpe_approx", 0)),
             reverse=True,
@@ -314,15 +368,17 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "evaluation_window_target_sessions": 756,
             "warmup_sessions": 260,
             "fill_timing": "Signals calculated after the close; target orders fill at next session open.",
-            "cost_model": "Configured transaction costs and adverse slippage are included in fills.",
+            "cost_model": "Configured transaction costs and adverse slippage are included; each candidate also receives 1.5x and 2.0x cost stress checks.",
             "benchmark": "Each strategy is compared against Nifty 50 price-index close-to-close return over the same sample.",
             "yearly_breakdown": "Calendar-year sub-periods from the same continuous simulation; partial first/last years are possible.",
+            "robustness_checks": "Each fixed strategy is re-tested over 252-, 504-, and 756-session windows, plus 1.5x and 2.0x transaction-cost/slippage scenarios. These overlapping windows are sensitivity checks, not independent validation.",
             "candidate_policy": "Candidates are research-only and never automatically replace the active strategy.",
             "limitations": [
                 "Current index constituents introduce survivorship bias.",
                 "Yahoo Finance data is unofficial and may be revised or incomplete.",
                 "A three-year window and one set of historical constituents cannot establish future profitability.",
                 "Trying many variants can overfit; judge robustness and later paper-trading, not the best single return.",
+                "The cost stress multiplies both modeled transaction costs and slippage; it does not model market impact or liquidity constraints.",
             ],
         },
         "market_data_coverage": coverage,

@@ -91,6 +91,22 @@ class CoreTests(unittest.TestCase):
         for symbol, quantity in state["positions"].items():
             self.assertLessEqual(quantity * {"AAA": 100.0, "BBB": 50.0, "CCC": 200.0}[symbol], equity * MAX_POSITION_WEIGHT + 1)
 
+    def test_cost_stress_increases_costs_and_reduces_available_cash(self):
+        baseline = new_state()
+        stressed = new_state()
+        baseline_trades = execute_rebalance(
+            baseline, ["AAA"], {"AAA": 100.0}, "2026-01-02", "2026-01-01", cost_multiplier=1.0
+        )
+        stressed_trades = execute_rebalance(
+            stressed, ["AAA"], {"AAA": 100.0}, "2026-01-02", "2026-01-01", cost_multiplier=2.0
+        )
+        self.assertEqual(len(baseline_trades), 1)
+        self.assertEqual(len(stressed_trades), 1)
+        self.assertGreater(stressed_trades[0]["costs"], baseline_trades[0]["costs"])
+        self.assertLess(stressed["cash"], baseline["cash"])
+        with self.assertRaises(ValueError):
+            execute_rebalance(new_state(), [], {}, "2026-01-02", "2026-01-01", cost_multiplier=0.5)
+
     def test_target_exit_sells_and_returns_to_cash(self):
         state = new_state()
         state["cash"] = 9500.0
