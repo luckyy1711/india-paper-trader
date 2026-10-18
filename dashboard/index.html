@@ -15,7 +15,7 @@
 <aside class="side">
  <div class="brand"><div class="mark"><span>N</span></div><div>NEON / <span class="eyebrow">PAPER TERMINAL</span></div></div>
  <div><div class="eyebrow" style="margin:0 12px 8px">Workspace</div><nav class="nav">
- <button class="active" data-tab="overview">◈ &nbsp; Overview</button><button data-tab="markets">⌁ &nbsp; Markets</button><button data-tab="research">▤ &nbsp; Strategy lab</button><button data-tab="portfolio">◫ &nbsp; Portfolio</button>
+ <button class="active" data-tab="overview">◈ &nbsp; Overview</button><button data-tab="markets">⌁ &nbsp; Markets</button><button data-tab="research">▤ &nbsp; Strategy lab</button><button data-tab="portfolio">◫ &nbsp; Portfolio</button><button data-tab="compounding">↗ &nbsp; Compounding lab</button>
  </nav></div>
  <div class="sidefoot">BUILD 0.1.0<br>SIMULATION MODE ONLY<br><br>DATA: YAHOO FINANCE / RESEARCH</div>
 </aside>
@@ -54,6 +54,32 @@
   <div class="card wide"><div class="cardhead"><h2>Risk-lock recovery study</h2><span class="tag">RESEARCH ONLY</span></div><p class="small">Compares the existing permanent drawdown lock with a research-only rule that requires Nifty to close below and later reclaim its 200-session average before resuming. At re-entry, the research risk reference resets to re-entry equity. This does not change the scheduled paper trader.</p><div class="tablewrap"><table><thead><tr><th>Risk rule</th><th>756-session return</th><th>Excess vs Nifty</th><th>Max drawdown</th><th>Positive test folds</th><th>Beats Nifty folds</th><th>Re-entries</th></tr></thead><tbody id="riskRecoveryRows"><tr><td colspan="7" class="small">Risk-recovery research will appear with the next report.</td></tr></tbody></table></div><p class="small" id="riskRecoveryNote">Risk recovery comparison is research-only; the scheduled paper trader keeps its permanent lock.</p></div>
   <div class="card wide"><div class="cardhead"><h2>Calendar-year stability</h2><span class="tag">CONTINUOUS SIMULATION</span></div><div class="tablewrap"><table><thead><tr><th>Year</th><th>Strategy</th><th>Strategy return</th><th>Nifty return</th><th>Excess vs Nifty</th><th>Trades</th></tr></thead><tbody id="yearlyRows"><tr><td colspan="6" class="small">Year-by-year results load with the latest report.</td></tr></tbody></table></div><p class="small">First and last years may be partial. These rows are sub-periods of the same continuous simulation, not independent experiments. The 10% drawdown lock is permanent in this simulation; after it triggers, later flat years can represent cash protection rather than continuous strategy trading.</p></div>
  </section>
+ <section class="tab" id="compounding">
+  <div class="notice">SCENARIO SIMULATOR ONLY · This calculator shows what your staged-reserve rule would do IF each milestone were reached. It does not predict returns, estimate the chance of success, or run trades.</div>
+  <div class="card wide">
+   <div class="cardhead"><h2>Staged compounding chain</h2><span class="tag">VIRTUAL CAPITAL · NO ORDERS</span></div>
+   <p class="small">Grow a trading pool toward a milestone, move a chosen share into a protected reserve, and continue with the remainder. Protected reserves are excluded from the next stage's trading pool. A reserve inside this simulator is accounting only, not real money protection.</p>
+   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <label class="card"><div class="kicker">Starting trading pool (₹)</div><input id="stageStart" type="number" min="1" max="1000000000" step="1" value="100" style="width:100%;margin-top:10px;background:#080d15;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px"></label>
+    <label class="card"><div class="kicker">Milestone multiplier</div><select id="stageMultiple" style="width:100%;margin-top:10px;background:#080d15;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px"><option value="5">5× each stage</option><option value="10" selected>10× each stage</option><option value="20">20× each stage</option></select></label>
+    <label class="card"><div class="kicker">Move to reserve (%)</div><input id="stageReservePct" type="number" min="0" max="95" step="5" value="50" style="width:100%;margin-top:10px;background:#080d15;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px"></label>
+    <label class="card"><div class="kicker">Number of stages</div><input id="stageCount" type="number" min="1" max="8" step="1" value="4" style="width:100%;margin-top:10px;background:#080d15;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px"></label>
+   </div>
+   <div class="grid">
+    <div class="card"><div class="kicker">Protected reserve after final stage</div><div class="value cyan" id="stageProtected">—</div><div class="small">Cumulative set-aside amount</div></div>
+    <div class="card"><div class="kicker">Next active trading pool</div><div class="value" id="stageActive">—</div><div class="small">Remaining after the final reserve</div></div>
+    <div class="card"><div class="kicker">Combined virtual equity</div><div class="value" id="stageTotal">—</div><div class="small">Reserve + active pool at final milestone</div></div>
+    <div class="card"><div class="kicker">Growth required</div><div class="value yellow" id="stageGrowth">—</div><div class="small">Required from the initial pool to reach the final milestone path</div></div>
+   </div>
+  </div>
+  <div class="card wide"><div class="cardhead"><h2>Milestone-by-milestone ledger</h2><span class="tag">IF EVERY TARGET IS REACHED</span></div><div class="tablewrap"><table><thead><tr><th>Stage</th><th>Trading pool at start</th><th>Milestone target</th><th>Moved to reserve</th><th>Next active pool</th><th>Total protected</th><th>Total virtual equity</th></tr></thead><tbody id="stageRows"></tbody></table></div></div>
+  <div class="card wide"><div class="cardhead"><h2>Universe expansion roadmap</h2><span class="tag">RESEARCH PLAN</span></div>
+   <div class="statline"><span class="sub">Current research base</span><b>Indian equities · Nifty 50 snapshot</b></div>
+   <div class="statline"><span class="sub">Next candidate expansion</span><b>Broader NSE stocks + eligible ETFs</b></div>
+   <div class="statline"><span class="sub">Separate research needed</span><b>Index derivatives, currency and commodities</b></div>
+   <p class="small">These are research directions, not currently enabled instruments. Each universe needs appropriate data, trading hours, liquidity checks, costs, instrument-specific risk limits and separate out-of-sample tests. Derivatives can magnify losses; nothing here connects to a broker or places orders.</p>
+  </div>
+ </section>
  <section class="tab" id="portfolio">
   <div class="layout"><div class="card"><div class="cardhead"><h2>Open positions</h2><span class="tag">SIMULATED</span></div><div class="tablewrap"><table><thead><tr><th>Symbol</th><th>Quantity</th><th>Avg cost</th><th>Market value</th></tr></thead><tbody id="positionRows"></tbody></table></div></div><div class="card"><div class="cardhead"><h2>Portfolio controls</h2><span class="tag">SAFETY</span></div><div class="statline"><span class="sub">Starting capital</span><b id="initial">₹10,000</b></div><div class="statline"><span class="sub">Peak equity</span><b id="peak">₹10,000</b></div><div class="statline"><span class="sub">Drawdown lock</span><b id="lock">OFF</b></div><div class="statline"><span class="sub">Pending target</span><b id="pending">None</b></div><div class="empty" style="margin-top:16px">This terminal is read-only. It cannot place trades or change bot state.</div></div></div>
   <div class="card wide"><div class="cardhead"><h2>Trade ledger</h2><span class="tag">SAVED RECORDS</span></div><div class="tablewrap"><table><thead><tr><th>Date</th><th>Symbol</th><th>Side</th><th>Quantity</th><th>Price</th><th>Value</th></tr></thead><tbody id="tradeRows"></tbody></table></div></div>
@@ -62,7 +88,7 @@
 </main></div>
 <script>
 const $=id=>document.getElementById(id);let charts={};const money=n=>Number.isFinite(Number(n))?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'—';const pct=n=>(Number(n)>=0?'+':'')+Number(n||0).toFixed(2)+'%';const nice=s=>(s||'—').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
-function showTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));const titles={overview:['Trading overview.','Paper portfolio · simulated capital'],markets:['Market monitor.','External chart · not the bot execution feed'],research:['Strategy lab.','Historical research · data coverage matters'],portfolio:['Portfolio ledger.','Read-only view of saved simulation state']};$('pagetitle').innerHTML=titles[id][0].replace('.','<span class="cyan">.</span>');$('subtitle').textContent=titles[id][1];}
+function showTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));const titles={overview:['Trading overview.','Paper portfolio · simulated capital'],markets:['Market monitor.','External chart · not the bot execution feed'],research:['Strategy lab.','Historical research · data coverage matters'],portfolio:['Portfolio ledger.','Read-only view of saved simulation state'],compounding:['Compounding lab.','Milestone calculator · illustrative only']};$('pagetitle').innerHTML=titles[id][0].replace('.','<span class="cyan">.</span>');$('subtitle').textContent=titles[id][1];}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.goto)));
 function makeChart(id,type,labels,datasets,opts={}){if(!window.Chart)return;const el=$(id);if(!el)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(el,{type,data:{labels,datasets:datasets.map(d=>({borderWidth:2,tension:.32,pointRadius:2,...d}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#a6b7ca',boxWidth:9,font:{size:10}}}},scales:{x:{ticks:{color:'#8293a9',font:{size:10}},grid:{color:'#1b2a3c'}},y:{ticks:{color:'#8293a9',font:{size:10},callback:v=>v+'%'},grid:{color:'#1b2a3c'}}},...opts}})}
 function rowsTrades(trades){const rows=(trades||[]).slice().reverse().slice(0,12);return rows.length?rows.map(t=>'<tr><td>'+String(t.date||t.timestamp_ist||'—').slice(0,10)+'</td><td><b>'+String(t.symbol||'—')+'</b></td><td class="'+(/sell|exit/i.test(t.side||t.action||'')?'red':'cyan')+'">'+String(t.side||t.action||'—').toUpperCase()+'</td><td>'+String(t.quantity??t.qty??'—')+'</td><td>'+money(t.price)+'</td><td>'+money(t.value??(Number(t.quantity||t.qty)*Number(t.price)))+'</td></tr>').join(''):'<tr><td colspan="6"><div class="empty">No completed simulated trades yet.</div></td></tr>'}
@@ -76,6 +102,27 @@ const mlCandidate=res.find(x=>x.strategy==='lightgbm_relative_alpha')||{};const 
 const annual=[];for(const strategyResult of res){if(strategyResult.status==='ok'&&Array.isArray(strategyResult.yearly_results)){for(const yearResult of strategyResult.yearly_results){annual.push({strategy:strategyResult.strategy,...yearResult})}}}annual.sort((a,b)=>String(a.year).localeCompare(String(b.year))||String(a.strategy).localeCompare(String(b.strategy)));$('yearlyRows').innerHTML=annual.map(y=>'<tr><td>'+String(y.year)+'</td><td><b>'+nice(y.strategy)+'</b></td><td class="'+(Number(y.total_return_pct)>=0?'cyan':'red')+'">'+pct(y.total_return_pct)+'</td><td>'+pct(y.benchmark_total_return_pct)+'</td><td class="'+(Number(y.excess_return_vs_nifty_pct)>=0?'cyan':'red')+'">'+pct(y.excess_return_vs_nifty_pct)+'</td><td>'+String(y.trade_count??0)+'</td></tr>').join('')||'<tr><td colspan="6" class="small">No yearly breakdown available for the current report.</td></tr>';
 $('recentTrades').innerHTML=rowsTrades(trades);$('tradeRows').innerHTML=rowsTrades(trades);$('footUpdated').textContent='Research updated '+(research.generated_at_utc||'not yet')+' · Refresh to reload files';}
 function parseCSV(csv){const lines=csv.trim().split(/\r?\n/);if(lines.length<2)return[];const h=lines.shift().split(',');return lines.filter(Boolean).map(line=>{const vals=line.split(',');return Object.fromEntries(h.map((k,i)=>[k,vals[i]]))})}
+function renderStages(){
+ const start=Math.max(1,Math.min(1000000000,Number($('stageStart').value)||100));
+ const mult=Math.max(2,Math.min(20,Number($('stageMultiple').value)||10));
+ const reservePct=Math.max(0,Math.min(95,Number($('stageReservePct').value)||0))/100;
+ const count=Math.max(1,Math.min(8,Math.floor(Number($('stageCount').value)||1)));
+ let active=start,protectedTotal=0,rows='';
+ for(let i=1;i<=count;i++){
+  const target=active*mult,reserve=target*reservePct,next=target-reserve;
+  protectedTotal+=reserve;
+  const total=protectedTotal+next;
+  rows+='<tr><td><b>'+i+'</b></td><td>'+money(active)+'</td><td class="cyan">'+money(target)+'</td><td>'+money(reserve)+'</td><td>'+money(next)+'</td><td>'+money(protectedTotal)+'</td><td>'+money(total)+'</td></tr>';
+  active=next;
+ }
+ const finalTarget=start*Math.pow(mult,count);
+ $('stageRows').innerHTML=rows;
+ $('stageProtected').textContent=money(protectedTotal);
+ $('stageActive').textContent=money(active);
+ $('stageTotal').textContent=money(protectedTotal+active);
+ $('stageGrowth').textContent=mult.toFixed(0)+'× per stage · '+money(finalTarget)+' milestone';
+}
+['stageStart','stageMultiple','stageReservePct','stageCount'].forEach(id=>$(id).addEventListener('input',renderStages));
 load();setInterval(load,60000);
 </script>
 </body></html>
