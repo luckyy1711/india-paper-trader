@@ -2,6 +2,8 @@ import unittest
 from datetime import date, timedelta
 
 from paper_trader.config import MIN_RESEARCH_BENCHMARK_BARS, STRATEGIES
+from unittest.mock import patch
+
 from paper_trader.research import backtest_strategy, build_research_report
 
 
@@ -43,6 +45,33 @@ class ResearchQualityGateTests(unittest.TestCase):
         })
         self.assertEqual(report["status"], "blocked_insufficient_market_data")
         self.assertTrue(any("benchmark has only 999" in item for item in report["data_quality"]["failed_checks"]))
+
+    def test_research_runs_period_and_cost_sensitivity_without_changing_active_rule(self):
+        benchmark = make_bars(1000, 100)
+        stocks = {f"S{i}": make_bars(350, 50 + i) for i in range(50)}
+
+        def fake_backtest(_bars, strategy, sample_days=756, cost_multiplier=1.0):
+            return {
+                "status": "ok", "strategy": strategy, "sample_start": "2024-01-01",
+                "sample_end": "2026-01-01", "sessions": sample_days,
+                "total_return_pct": 5.0 / cost_multiplier, "annualized_return_pct": 2.0,
+                "sharpe_approx": 0.5, "max_drawdown_pct": 8.0 * cost_multiplier,
+                "benchmark_total_return_pct": 3.0, "excess_return_vs_nifty_pct": 2.0 / cost_multiplier,
+                "trade_count": 10,
+            }
+
+        with patch("paper_trader.research.backtest_strategy", side_effect=fake_backtest) as mocked:
+            report = build_research_report({"__BENCHMARK__": benchmark, **stocks})
+
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(mocked.call_count, len(STRATEGIES) * 5)
+        for result in report["results"]:
+            self.assertIn("robustness", result)
+            self.assertEqual(set(result["robustness"]["period_sensitivity"]), {"252", "504", "756"})
+            self.assertEqual(set(result["robustness"]["cost_sensitivity"]), {"1.0", "1.5", "2.0"})
+            self.assertEqual(result["robustness"]["cost_scenarios_tested"], 3)
+        self.assertEqual(report["active_strategy"], "trend_momentum_126")
+        self.assertFalse(report["active_strategy_changes_automatically"])
 
     def test_backtest_compares_to_benchmark_and_emits_yearly_breakdown(self):
         benchmark = make_bars(420, 100)

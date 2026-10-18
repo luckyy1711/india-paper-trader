@@ -177,8 +177,11 @@ def execute_rebalance(
     open_prices: dict[str, float],
     fill_date: str,
     signal_date: str,
+    cost_multiplier: float = 1.0,
 ) -> list[dict[str, Any]]:
-    """Execute a simulated rebalance at the next session's open, with costs and guardrails."""
+    """Execute a simulated rebalance with configurable research-only cost stress."""
+    if not math.isfinite(cost_multiplier) or cost_multiplier < 1.0:
+        raise ValueError("cost_multiplier must be finite and at least 1.0")
     positions: dict[str, int] = {str(k): int(v) for k, v in state["positions"].items()}
     cash = float(state["cash"])
     targets = [] if state.get("risk_locked", False) else list(dict.fromkeys(target_symbols))[:MAX_POSITIONS]
@@ -197,7 +200,7 @@ def execute_rebalance(
     def record(side: str, symbol: str, quantity: int, fill_price: float, reason: str) -> None:
         nonlocal cash
         gross = quantity * fill_price
-        cost = gross * TRANSACTION_COST_RATE
+        cost = gross * TRANSACTION_COST_RATE * cost_multiplier
         if side == "SELL":
             cash += gross - cost
         else:
@@ -219,7 +222,7 @@ def execute_rebalance(
     for symbol in list(positions):
         if symbol not in targets:
             quantity = positions.pop(symbol)
-            fill = float(open_prices[symbol]) * (1.0 - SLIPPAGE_RATE)
+            fill = float(open_prices[symbol]) * (1.0 - SLIPPAGE_RATE * cost_multiplier)
             record("SELL", symbol, quantity, fill, "target exit or risk lock")
 
     def nav_at_open() -> float:
@@ -248,7 +251,7 @@ def execute_rebalance(
     for symbol in targets:
         if symbol in positions or len(positions) >= MAX_POSITIONS:
             continue
-        price = float(open_prices[symbol]) * (1.0 + SLIPPAGE_RATE)
+        price = float(open_prices[symbol]) * (1.0 + SLIPPAGE_RATE * cost_multiplier)
         if price <= 0:
             continue
         current_exposure = sum(qty * float(open_prices[sym]) for sym, qty in positions.items())
