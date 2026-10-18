@@ -134,6 +134,18 @@ def backtest_strategy(
     days_skipped_for_held_prices = 0
     targets_missing_next_open = 0
     target_count_total = 0
+    risk_lock_date: str | None = None
+    sessions_with_positions = 0
+    post_lock_flat_sessions = 0
+
+    def record_session(day: str) -> None:
+        nonlocal risk_lock_date, sessions_with_positions, post_lock_flat_sessions
+        if state.get("risk_locked", False) and risk_lock_date is None:
+            risk_lock_date = day
+        if state["positions"]:
+            sessions_with_positions += 1
+        elif risk_lock_date is not None and day > risk_lock_date:
+            post_lock_flat_sessions += 1
 
     for idx in range(first_signal_index, len(dates) - 1):
         signal_date, fill_date = dates[idx], dates[idx + 1]
@@ -177,11 +189,13 @@ def backtest_strategy(
             except (ValueError, KeyError):
                 nav = previous_equity
             equity_points.append({"date": fill_date, "equity": nav})
+            record_session(fill_date)
             continue
 
         trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date))
         nav = mark_to_market(state, closes)["equity"]
         equity_points.append({"date": fill_date, "equity": nav})
+        record_session(fill_date)
         target_count_total += len(valid_targets)
 
     equities = [float(point["equity"]) for point in equity_points]
@@ -208,8 +222,16 @@ def backtest_strategy(
         "candidate_symbols_available_at_next_open": target_count_total,
         "target_symbols_missing_next_open": targets_missing_next_open,
         "days_skipped_missing_held_prices": days_skipped_for_held_prices,
+        "sessions_with_positions": sessions_with_positions,
+        "risk_lock_triggered": risk_lock_date is not None,
+        "risk_lock_date": risk_lock_date,
+        "risk_lock_active_at_end": bool(state.get("risk_locked", False)),
+        "post_lock_flat_sessions": post_lock_flat_sessions,
         "yearly_results": _yearly_breakdown(equity_points, trades, benchmark_by_date),
-        "methodology": "Signals use data available through each close; target orders fill at next session open with configured costs/slippage.",
+        "methodology": (
+            "Signals use data available through each close; target orders fill at next session open with configured costs/slippage. "
+            "The configured 10% drawdown lock is permanent in this simulation, so results stay in cash after the lock triggers."
+        ),
     })
     return metrics
 
