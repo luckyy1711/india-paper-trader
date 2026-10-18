@@ -19,6 +19,7 @@ from .config import (
 )
 from .core import benchmark_dates, execute_rebalance, mark_to_market, score_symbol, select_targets, new_state
 from .symbols import NIFTY50_SYMBOLS
+from .ml_research import MODEL_NAME as OPEN_SOURCE_ML_MODEL_NAME, backtest_lightgbm_research
 
 
 def _metrics(equities: list[float], trade_count: int, session_count: int) -> dict[str, Any]:
@@ -489,6 +490,16 @@ def _risk_recovery_comparison(
     }
 
 
+def _compact_open_source_metrics(candidate: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "status", "sample_start", "sample_end", "sessions", "evaluation_sessions",
+        "total_return_pct", "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+        "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+        "model_refresh_count", "training_sample_count_last_fit",
+    )
+    return {key: candidate.get(key) for key in keys if key in candidate}
+
+
 def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     """Build a multi-year comparison and withhold results when input coverage is inadequate."""
     dates = benchmark_dates(bars_by_symbol)
@@ -613,6 +624,59 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "Coverage checks do not guarantee accuracy or predict future performance."
         )
 
+    # Open-source ML candidate is isolated from the six rule-based strategies. It never
+    # changes ACTIVE_STRATEGY; all model training is chronological and paper-only.
+    open_source_models: list[dict[str, Any]] = []
+    if quality_status != "ok":
+        open_source_models = [{
+            "strategy": OPEN_SOURCE_ML_MODEL_NAME,
+            "status": "blocked_insufficient_market_data",
+            "model_family": "LightGBM gradient-boosted decision trees",
+            "active_strategy": False,
+            "auto_promoted": False,
+            "trade_count": 0,
+            "message": quality_message,
+        }]
+    else:
+        try:
+            ml_base = backtest_lightgbm_research(bars_by_symbol, cost_multiplier=1.0)
+            if ml_base.get("status") == "ok":
+                sensitivity: dict[str, dict[str, Any]] = {"1.0": _compact_open_source_metrics(ml_base)}
+                for multiplier in (1.5, 2.0):
+                    stressed = backtest_lightgbm_research(
+                        bars_by_symbol, cost_multiplier=multiplier
+                    )
+                    sensitivity[str(multiplier)] = _compact_open_source_metrics(stressed)
+                valid_costs = [
+                    value for value in sensitivity.values()
+                    if value.get("status") == "ok"
+                    and isinstance(value.get("total_return_pct"), (int, float))
+                ]
+                ml_base["robustness"] = {
+                    "cost_sensitivity": sensitivity,
+                    "cost_scenarios_tested": len(valid_costs),
+                    "positive_return_cost_scenarios": sum(
+                        float(value["total_return_pct"]) > 0 for value in valid_costs
+                    ),
+                    "interpretation": (
+                        "The same fixed LightGBM training and signal schedule is re-simulated with "
+                        "1.0x, 1.5x, and 2.0x transaction-cost/slippage assumptions. These are cost "
+                        "sensitivity checks, not independent validation."
+                    ),
+                }
+            open_source_models = [ml_base]
+        except Exception as exc:
+            open_source_models = [{
+                "strategy": OPEN_SOURCE_ML_MODEL_NAME,
+                "status": "error",
+                "model_family": "LightGBM gradient-boosted decision trees",
+                "active_strategy": False,
+                "auto_promoted": False,
+                "trade_count": 0,
+                "error_type": type(exc).__name__,
+                "message": "The open-source model research run failed; rule-based results remain separate.",
+            }]
+
     risk_recovery_comparison: dict[str, Any] = {
         "status": "blocked_insufficient_market_data",
         "message": "Risk-recovery comparison is withheld because the research data-quality gate did not pass.",
@@ -644,6 +708,7 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "robustness_checks": "Each fixed strategy is re-tested over 252-, 504-, and 756-session windows, plus 1.5x and 2.0x transaction-cost/slippage scenarios. These overlapping windows are sensitivity checks, not independent validation.",
             "walk_forward_checks": "Each strategy is tested on four consecutive 126-session chronological folds with no overlap between return intervals. Each fold uses a fresh simulated portfolio; results are not one compounded equity curve and do not prove future profitability.",
             "candidate_policy": "Candidates are research-only and never automatically replace the active strategy.",
+            "open_source_model": "A separate LightGBM alpha-regression candidate follows an expanding-window process; a 21-session label is only used for training after the outcome window has ended. Cost sensitivity is tested at 1.0x, 1.5x, and 2.0x.",
             "limitations": [
                 "Current index constituents introduce survivorship bias.",
                 "Yahoo Finance data is unofficial and may be revised or incomplete.",
@@ -670,4 +735,5 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "survivorship bias; metrics are not forecasts. Paper-trial candidates separately before considering promotion."
         ),
         "results": results,
+        "open_source_models": open_source_models,
     }
