@@ -266,6 +266,83 @@ def _eligible_training_rows(
     return [sample for sample in samples if sample[1] <= signal_index]
 
 
+
+def _prediction_quality_summary(
+    samples: list[tuple[int, str, float, float]],
+) -> dict[str, Any]:
+    """Summarize out-of-sample cross-sectional ranking quality after labels mature."""
+    by_date: dict[int, list[tuple[str, float, float]]] = {}
+    for signal_index, symbol, prediction, realized_excess in samples:
+        if isfinite(prediction) and isfinite(realized_excess):
+            by_date.setdefault(signal_index, []).append((symbol, prediction, realized_excess))
+
+    def average_ranks(values: list[float]) -> list[float]:
+        order = sorted(range(len(values)), key=lambda index: values[index])
+        ranks = [0.0] * len(values)
+        start = 0
+        while start < len(order):
+            end = start + 1
+            while end < len(order) and values[order[end]] == values[order[start]]:
+                end += 1
+            rank = ((start + 1) + end) / 2.0
+            for position in range(start, end):
+                ranks[order[position]] = rank
+            start = end
+        return ranks
+
+    correlations: list[float] = []
+    top_returns: list[float] = []
+    universe_returns: list[float] = []
+    evaluated_pairs = 0
+    evaluated_dates = 0
+    for rows in by_date.values():
+        if len(rows) < 5:
+            continue
+        predictions = [row[1] for row in rows]
+        outcomes = [row[2] for row in rows]
+        pred_ranks = average_ranks(predictions)
+        outcome_ranks = average_ranks(outcomes)
+        pred_mean = statistics.fmean(pred_ranks)
+        outcome_mean = statistics.fmean(outcome_ranks)
+        covariance = statistics.fmean(
+            (left - pred_mean) * (right - outcome_mean)
+            for left, right in zip(pred_ranks, outcome_ranks)
+        )
+        pred_var = statistics.fmean((value - pred_mean) ** 2 for value in pred_ranks)
+        outcome_var = statistics.fmean((value - outcome_mean) ** 2 for value in outcome_ranks)
+        if pred_var > 0 and outcome_var > 0:
+            correlations.append(covariance / sqrt(pred_var * outcome_var))
+        top_count = min(MAX_POSITIONS, len(rows))
+        top = sorted(rows, key=lambda row: (-row[1], row[0]))[:top_count]
+        top_returns.append(statistics.fmean(row[2] for row in top))
+        universe_returns.append(statistics.fmean(outcomes))
+        evaluated_pairs += len(rows)
+        evaluated_dates += 1
+
+    if not evaluated_dates:
+        return {
+            "status": "insufficient_evaluable_cross_sections",
+            "cross_sections_evaluated": 0,
+            "sample_count": 0,
+            "interpretation": "Not enough matured out-of-sample labels per scoring date to assess ranking quality.",
+        }
+    mean_top = statistics.fmean(top_returns)
+    mean_universe = statistics.fmean(universe_returns)
+    return {
+        "status": "ok",
+        "cross_sections_evaluated": evaluated_dates,
+        "sample_count": evaluated_pairs,
+        "mean_spearman_rank_ic": round(statistics.fmean(correlations), 4) if correlations else None,
+        "positive_rank_ic_cross_sections": sum(value > 0 for value in correlations),
+        "rank_ic_cross_sections": len(correlations),
+        "top_positions_mean_realized_excess_pct": round(mean_top * 100.0, 3),
+        "universe_mean_realized_excess_pct": round(mean_universe * 100.0, 3),
+        "top_minus_universe_excess_pp": round((mean_top - mean_universe) * 100.0, 3),
+        "label_note": "Realized 21-session relative-return labels are clipped to +/-50%; these are descriptive ex-post diagnostics, not trading inputs.",
+        "interpretation": "Rank IC measures whether higher predictions tended to rank stocks with higher subsequent relative returns. Top-position outcomes are equal-weighted per scoring date and do not include simulated portfolio costs.",
+    }
+
+
 def _walk_forward_periods(
     equity_points: list[dict[str, Any]],
     benchmark_by_date: dict[str, dict[str, Any]],
@@ -408,6 +485,8 @@ def backtest_lightgbm_research(
     missing_fill_symbols = 0
     missing_mark_sessions = 0
     signal_count = 0
+    prediction_samples: list[tuple[int, str, float, float]] = []
+    realized_excess_by_signal_symbol = {(sample[0], sample[2]): sample[4] for sample in training_samples}
 
     def train_at(signal_index: int):
         nonlocal last_fit_sample_count, last_fit_error
@@ -479,11 +558,20 @@ def backtest_lightgbm_research(
                     np.asarray([feature for _symbol, feature in candidates], dtype=np.float32),
                     num_threads=1,
                 )
+                finite_predictions = []
+                for (symbol, _feature), raw_prediction in zip(candidates, predictions):
+                    prediction = float(raw_prediction)
+                    if not isfinite(prediction):
+                        continue
+                    finite_predictions.append((prediction, symbol))
+                    realized = realized_excess_by_signal_symbol.get((signal_index, symbol))
+                    if realized is not None:
+                        prediction_samples.append((signal_index, symbol, prediction, realized))
                 ranked = sorted(
                     (
-                        (float(prediction), symbol)
-                        for (symbol, _feature), prediction in zip(candidates, predictions)
-                        if isfinite(float(prediction)) and float(prediction) >= MIN_EXPECTED_EXCESS_RETURN
+                        (prediction, symbol)
+                        for prediction, symbol in finite_predictions
+                        if prediction >= MIN_EXPECTED_EXCESS_RETURN
                     ),
                     key=lambda item: (-item[0], item[1]),
                 )
@@ -567,6 +655,7 @@ def backtest_lightgbm_research(
         "model_training_dates": training_dates,
         "last_training_status": last_fit_error or "ok",
         "signal_dates_with_positive_alpha": signal_count,
+        "prediction_diagnostics": _prediction_quality_summary(prediction_samples),
         "candidate_symbols_missing_next_open": missing_fill_symbols,
         "sessions_with_missing_held_close": missing_mark_sessions,
         "risk_lock_triggered": risk_lock_date is not None,
