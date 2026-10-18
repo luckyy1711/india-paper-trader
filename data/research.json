@@ -11,7 +11,7 @@
     "status": "ok"
   },
   "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
-  "generated_at_utc": "2026-10-18T14:41:09+00:00",
+  "generated_at_utc": "2026-10-18T14:42:33+00:00",
   "market_data_coverage": {
     "latest_common_signal_date": "2026-10-15",
     "max_stock_bars": 1237,
