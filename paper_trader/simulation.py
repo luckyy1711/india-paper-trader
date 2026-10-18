@@ -37,8 +37,10 @@ def _summary(result: dict[str, Any], initial_cash: float) -> dict[str, Any]:
     )
     summary = {key: result[key] for key in keys if key in result}
     scale = initial_cash / INITIAL_CASH
-    summary["start_equity"] = round(float(result.get("start_equity", INITIAL_CASH)) * scale, 2)
-    summary["end_equity"] = round(float(result.get("end_equity", INITIAL_CASH)) * scale, 2)
+    if "start_equity" in result:
+        summary["start_equity"] = round(float(result["start_equity"]) * scale, 2)
+    if "end_equity" in result:
+        summary["end_equity"] = round(float(result["end_equity"]) * scale, 2)
     summary["initial_cash"] = round(initial_cash, 2)
     return summary
 
