@@ -199,6 +199,7 @@ def backtest_strategy(
                 risk_policy == RISK_POLICY_NIFTY_REENTRY
                 and active_lock_date is not None
                 and signal_date > active_lock_date
+                and not state["positions"]
                 and _benchmark_above_sma(benchmark_prefix, 200)
             )
             if can_reenter:
