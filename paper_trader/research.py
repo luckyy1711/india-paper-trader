@@ -105,8 +105,8 @@ RISK_POLICY_NIFTY_REENTRY = "nifty_200_sma_reentry"
 RISK_POLICIES = {RISK_POLICY_PERMANENT, RISK_POLICY_NIFTY_REENTRY}
 
 
-def _benchmark_above_sma(rows: list[dict[str, Any]], window: int = 200) -> bool:
-    """Use only benchmark closes supplied through the signal date."""
+def _benchmark_sma_position(rows: list[dict[str, Any]], window: int = 200) -> int | None:
+    """Return 1 above, -1 below, 0 equal, or None without enough valid history."""
     if window < 1:
         raise ValueError("window must be positive")
     closes: list[float] = []
@@ -117,7 +117,24 @@ def _benchmark_above_sma(rows: list[dict[str, Any]], window: int = 200) -> bool:
                 closes.append(close)
         except (TypeError, ValueError):
             continue
-    return len(closes) >= window and closes[-1] > statistics.fmean(closes[-window:])
+    if len(closes) < window:
+        return None
+    average = statistics.fmean(closes[-window:])
+    if closes[-1] > average:
+        return 1
+    if closes[-1] < average:
+        return -1
+    return 0
+
+
+def _benchmark_above_sma(rows: list[dict[str, Any]], window: int = 200) -> bool:
+    """Use only benchmark closes supplied through the signal date."""
+    return _benchmark_sma_position(rows, window) == 1
+
+
+def _benchmark_below_sma(rows: list[dict[str, Any]], window: int = 200) -> bool:
+    """Require a genuine close below the average, not just an equal close."""
+    return _benchmark_sma_position(rows, window) == -1
 
 
 def backtest_strategy(
@@ -160,6 +177,7 @@ def backtest_strategy(
     target_count_total = 0
     risk_lock_date: str | None = None
     active_lock_date: str | None = None
+    benchmark_was_below_sma_since_lock = False
     risk_lock_events = 0
     risk_reentry_dates: list[str] = []
     sessions_with_positions = 0
@@ -167,15 +185,17 @@ def backtest_strategy(
 
     def record_session(day: str) -> None:
         nonlocal risk_lock_date, active_lock_date, risk_lock_events
-        nonlocal sessions_with_positions, post_lock_flat_sessions
+        nonlocal benchmark_was_below_sma_since_lock, sessions_with_positions, post_lock_flat_sessions
         if state.get("risk_locked", False):
             if active_lock_date is None:
                 active_lock_date = day
+                benchmark_was_below_sma_since_lock = False
                 risk_lock_events += 1
                 if risk_lock_date is None:
                     risk_lock_date = day
         else:
             active_lock_date = None
+            benchmark_was_below_sma_since_lock = False
         if state["positions"]:
             sessions_with_positions += 1
         elif state.get("risk_locked", False) and active_lock_date is not None and day > active_lock_date:
@@ -195,12 +215,21 @@ def backtest_strategy(
         # the production paper-trader state machine or its permanent drawdown lock.
         if state.get("risk_locked", False):
             targets = []
+            market_above_sma = _benchmark_above_sma(benchmark_prefix, 200)
+            if (
+                risk_policy == RISK_POLICY_NIFTY_REENTRY
+                and active_lock_date is not None
+                and signal_date >= active_lock_date
+                and _benchmark_below_sma(benchmark_prefix, 200)
+            ):
+                benchmark_was_below_sma_since_lock = True
             can_reenter = (
                 risk_policy == RISK_POLICY_NIFTY_REENTRY
                 and active_lock_date is not None
                 and signal_date > active_lock_date
+                and benchmark_was_below_sma_since_lock
                 and not state["positions"]
-                and _benchmark_above_sma(benchmark_prefix, 200)
+                and market_above_sma
             )
             if can_reenter:
                 recovery_targets = select_targets(
@@ -224,6 +253,7 @@ def backtest_strategy(
                     # Start a fresh drawdown measurement from the simulated re-entry equity.
                     state["peak_equity"] = round(float(equity_points[-1]["equity"]), 2)
                     active_lock_date = None
+                    benchmark_was_below_sma_since_lock = False
                     risk_reentry_dates.append(signal_date)
                     targets = recovery_targets
         else:
@@ -310,9 +340,10 @@ def backtest_strategy(
                 "The normal permanent 10% drawdown lock remains in force; after it triggers, the simulation stays in cash."
                 if risk_policy == RISK_POLICY_PERMANENT
                 else (
-                    "Research-only recovery overlay: after a 10% drawdown lock, wait for a later Nifty close above its "
-                    "200-session SMA and at least one eligible stock target with a usable next-open price. The simulation "
-                    "then resumes at the next open and resets the drawdown reference peak to re-entry equity. "
+                    "Research-only recovery overlay: after a 10% drawdown lock, wait for Nifty to close below its "
+                    "200-session SMA and then later close back above it, with an eligible stock target and usable "
+                    "next-open price. The simulation resumes at the next open and resets the drawdown reference peak "
+                    "to re-entry equity. "
                     "This policy is not used by the scheduled paper trader."
                 )
             )
@@ -443,9 +474,9 @@ def _risk_recovery_comparison(
         ],
         "methodology": (
             "Both policies use the same active strategy and market data. The recovery overlay remains in cash after "
-            "a drawdown lock until a later signal close has Nifty above its 200-session SMA and at least one eligible "
-            "target with a valid next-open price. Re-entry happens at the next open; the risk reference peak resets "
-            "to re-entry equity. The scheduled paper trader and its permanent lock are not changed."
+            "a drawdown lock until Nifty closes below its 200-session SMA and then later closes back above it, with "
+            "at least one eligible target and a valid next-open price. Re-entry happens at the next open; the risk "
+            "reference peak resets to re-entry equity. The scheduled paper trader and its permanent lock are not changed."
         ),
         "limitations": [
             "The four 126-session fold portfolios restart independently; they are not one compounded equity curve.",
