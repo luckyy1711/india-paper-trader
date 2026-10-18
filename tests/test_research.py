@@ -118,7 +118,7 @@ class ResearchQualityGateTests(unittest.TestCase):
         stock = []
         for index in range(count):
             day = (start + timedelta(days=index)).isoformat()
-            index_close = 100.0 if index < 460 else 160.0
+            index_close = 100.0 if index < 430 else (99.0 if index < 460 else 160.0)
             stock_close = 100.0 if index < 435 else max(40.0, 100.0 - 15.0 * (index - 434))
             benchmark.append({"date": day, "open": index_close, "close": index_close})
             stock.append({"date": day, "open": stock_close, "close": stock_close})
@@ -143,6 +143,22 @@ class ResearchQualityGateTests(unittest.TestCase):
         self.assertGreater(recovery["sessions_with_positions"], permanent["sessions_with_positions"])
         self.assertEqual(permanent["risk_policy"], RISK_POLICY_PERMANENT)
         self.assertEqual(recovery["risk_policy"], RISK_POLICY_NIFTY_REENTRY)
+
+        # If the market stays above its 200-session average through the lock, that is
+        # not a recovery event: the rule must not unlock immediately or re-enter.
+        above_benchmark = []
+        for index in range(count):
+            day = (start + timedelta(days=index)).isoformat()
+            index_close = 100.0 if index < 430 else 160.0
+            above_benchmark.append({"date": day, "open": index_close, "close": index_close})
+        above_bars = {"__BENCHMARK__": above_benchmark, "S0": stock}
+        with patch("paper_trader.research.select_targets", return_value=["S0"]):
+            no_recovery = backtest_strategy(
+                above_bars, "trend_momentum_126", sample_days=120, risk_policy=RISK_POLICY_NIFTY_REENTRY
+            )
+        self.assertTrue(no_recovery["risk_lock_triggered"])
+        self.assertEqual(no_recovery["risk_reentry_count"], 0)
+        self.assertTrue(no_recovery["risk_lock_active_at_end"])
 
 
 if __name__ == "__main__":
