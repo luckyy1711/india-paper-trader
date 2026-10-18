@@ -2,6 +2,12 @@ name: Paper Strategy Research
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'paper_trader/market_data.py'
+      - 'paper_trader/symbols.py'
+      - 'requirements.txt'
+      - '.github/workflows/research.yml'
 
 permissions:
   contents: write
