@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "policy": "Reference upstream projects; adapt ideas with attribution and licence compliance; do not vendor whole trading engines without a specific engineering need.",
+  "projects": [
+    {
+      "name": "Freqtrade",
+      "repository": "https://github.com/freqtrade/freqtrade",
+      "license": "GPL-3.0",
+      "markets": ["crypto"],
+      "role": "strategy framework, historical backtesting, dry-run forward testing, FreqAI",
+      "integration_status": "reference_only",
+      "planned_use": "Compare crypto strategy lifecycle, backtest safeguards, and dry-run practices before deciding whether a separate crypto engine is justified.",
+      "constraints": ["crypto-focused", "backtest assumptions can inflate results", "GPL obligations must be reviewed before copying or linking code"]
+    },
+    {
+      "name": "Freqtrade strategies",
+      "repository": "https://github.com/freqtrade/freqtrade-strategies",
+      "license": "GPL-3.0 (verify upstream repository at time of reuse)",
+      "markets": ["crypto"],
+      "role": "examples of community-authored strategy rules",
+      "integration_status": "reference_only",
+      "planned_use": "Treat strategies as hypotheses; port individual rules only after checking their source, licence, look-ahead risks, and independent performance.",
+      "constraints": ["examples are not proof of profitability", "must backtest then dry-run", "review individual strategy provenance"]
+    },
+    {
+      "name": "NautilusTrader",
+      "repository": "https://github.com/nautechsystems/nautilus_trader",
+      "license": "LGPL-3.0",
+      "markets": ["crypto", "forex", "equities"],
+      "role": "event-driven multi-asset backtesting and execution architecture",
+      "integration_status": "reference_only",
+      "planned_use": "Study fill models, time handling, portfolio accounting, and backtest/live parity; avoid adding its heavier stack to the 4 GB laptop until needed.",
+      "constraints": ["adapter availability differs by venue", "live execution has failure modes that backtests do not reproduce"]
+    },
+    {
+      "name": "LEAN",
+      "repository": "https://github.com/QuantConnect/Lean",
+      "license": "Apache-2.0",
+      "markets": ["equities", "forex", "crypto", "derivatives"],
+      "role": "multi-asset engine and research/backtest reference",
+      "integration_status": "reference_only",
+      "planned_use": "Study portfolio accounting, corporate-action handling, and multi-market abstraction before considering an engine migration.",
+      "constraints": ["data and broker availability depend on provider", "full engine may be excessive for current hardware and scope"]
+    },
+    {
+      "name": "Microsoft Qlib",
+      "repository": "https://github.com/microsoft/qlib",
+      "license": "MIT",
+      "markets": ["equities", "research"],
+      "role": "quantitative research workflows, model evaluation and experiment tracking",
+      "integration_status": "design_reference",
+      "planned_use": "Use its workflow concepts to separate feature creation, train/validation/test windows, predictions, and portfolio evaluation.",
+      "constraints": ["research framework rather than a turnkey broker-connected bot", "market data and model quality determine results"]
+    },
+    {
+      "name": "FinRL",
+      "repository": "https://github.com/AI4Finance-Foundation/FinRL",
+      "license": "MIT (verify upstream before reuse)",
+      "markets": ["research", "equities", "crypto"],
+      "role": "reinforcement-learning research and baselines",
+      "integration_status": "reference_only",
+      "planned_use": "Read the research/evaluation methodology; defer RL until simpler baselines are robust and sufficient training data exists.",
+      "constraints": ["compute-intensive experimentation can be unsuitable for 4 GB RAM", "training reward is not evidence of future profitability"]
+    },
+    {
+      "name": "CCXT",
+      "repository": "https://github.com/ccxt/ccxt",
+      "license": "MIT",
+      "markets": ["crypto"],
+      "role": "unified exchange API interface",
+      "integration_status": "not_installed",
+      "planned_use": "Evaluate as a data/exchange adapter only after selecting a supported venue and verifying API terms, rate limits, and India access.",
+      "constraints": ["does not provide a profitable strategy", "venue-specific capabilities and data quality vary"]
+    },
+    {
+      "name": "LightGBM",
+      "repository": "https://github.com/lightgbm-org/LightGBM",
+      "license": "MIT",
+      "markets": ["research", "equities", "potentially crypto/forex"],
+      "role": "gradient-boosted tree model",
+      "integration_status": "already_used_research_only",
+      "planned_use": "Keep the current model as a candidate and require walk-forward, purged-label, cost-stress, and out-of-sample comparisons against simple baselines.",
+      "constraints": ["not a trading bot by itself", "current model only covers the existing Indian-equity research dataset"]
+    }
+  ],
+  "evaluation_rules": [
+    "Use the same time range, assets, data quality rules, initial capital, fees, slippage, and fill assumptions when comparing strategies.",
+    "Never select a strategy solely by its best backtest return.",
+    "Report net return, benchmark excess return, maximum drawdown, trade count, turnover, exposure, and risk-adjusted metrics.",
+    "Use chronological walk-forward evaluation with training labels fully matured before each test decision.",
+    "Preserve a final untouched test period; do not tune on it.",
+    "Paper-trade candidates separately before promotion; never auto-promote research candidates.",
+    "Keep crypto, forex, and Indian equities in separate portfolios, data adapters, session rules, cost models, and risk limits.",
+    "Keep all execution paper-only; no live broker integration or leverage in this research phase."
+  ]
+}
