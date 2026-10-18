@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from datetime import datetime, timezone
-from math import sqrt
+from math import isfinite, sqrt
 import statistics
 from typing import Any
 
@@ -100,16 +100,56 @@ def _yearly_breakdown(
     return yearly
 
 
+RISK_POLICY_PERMANENT = "permanent_lock"
+RISK_POLICY_NIFTY_REENTRY = "nifty_200_sma_reentry"
+RISK_POLICIES = {RISK_POLICY_PERMANENT, RISK_POLICY_NIFTY_REENTRY}
+
+
+def _benchmark_sma_position(rows: list[dict[str, Any]], window: int = 200) -> int | None:
+    """Return 1 above, -1 below, 0 equal, or None without enough valid history."""
+    if window < 1:
+        raise ValueError("window must be positive")
+    closes: list[float] = []
+    for row in rows:
+        try:
+            close = float(row.get("close", 0))
+            if close > 0 and isfinite(close):
+                closes.append(close)
+        except (TypeError, ValueError):
+            continue
+    if len(closes) < window:
+        return None
+    average = statistics.fmean(closes[-window:])
+    if closes[-1] > average:
+        return 1
+    if closes[-1] < average:
+        return -1
+    return 0
+
+
+def _benchmark_above_sma(rows: list[dict[str, Any]], window: int = 200) -> bool:
+    """Use only benchmark closes supplied through the signal date."""
+    return _benchmark_sma_position(rows, window) == 1
+
+
+def _benchmark_below_sma(rows: list[dict[str, Any]], window: int = 200) -> bool:
+    """Require a genuine close below the average, not just an equal close."""
+    return _benchmark_sma_position(rows, window) == -1
+
+
 def backtest_strategy(
     bars_by_symbol: dict[str, list[dict[str, Any]]],
     strategy_name: str,
     sample_days: int = 756,
     cost_multiplier: float = 1.0,
+    risk_policy: str = RISK_POLICY_PERMANENT,
 ) -> dict[str, Any]:
-    """Walk forward; close-known signals fill next session open, with optional cost stress."""
+    """Backtest a fixed strategy and optional research-only drawdown recovery policy."""
     dates = benchmark_dates(bars_by_symbol)
     if strategy_name not in STRATEGIES:
         raise ValueError(f"Unknown strategy: {strategy_name}")
+    if risk_policy not in RISK_POLICIES:
+        raise ValueError(f"Unknown risk policy: {risk_policy}")
     if len(dates) < 300:
         return {"status": "insufficient_history", "sessions_available": len(dates), "trade_count": 0}
 
@@ -136,16 +176,29 @@ def backtest_strategy(
     targets_missing_next_open = 0
     target_count_total = 0
     risk_lock_date: str | None = None
+    active_lock_date: str | None = None
+    benchmark_was_below_sma_since_lock = False
+    risk_lock_events = 0
+    risk_reentry_dates: list[str] = []
     sessions_with_positions = 0
     post_lock_flat_sessions = 0
 
     def record_session(day: str) -> None:
-        nonlocal risk_lock_date, sessions_with_positions, post_lock_flat_sessions
-        if state.get("risk_locked", False) and risk_lock_date is None:
-            risk_lock_date = day
+        nonlocal risk_lock_date, active_lock_date, risk_lock_events
+        nonlocal benchmark_was_below_sma_since_lock, sessions_with_positions, post_lock_flat_sessions
+        if state.get("risk_locked", False):
+            if active_lock_date is None:
+                active_lock_date = day
+                benchmark_was_below_sma_since_lock = False
+                risk_lock_events += 1
+                if risk_lock_date is None:
+                    risk_lock_date = day
+        else:
+            active_lock_date = None
+            benchmark_was_below_sma_since_lock = False
         if state["positions"]:
             sessions_with_positions += 1
-        elif risk_lock_date is not None and day > risk_lock_date:
+        elif state.get("risk_locked", False) and active_lock_date is not None and day > active_lock_date:
             post_lock_flat_sessions += 1
 
     for idx in range(first_signal_index, len(dates) - 1):
@@ -157,9 +210,57 @@ def backtest_strategy(
 
         benchmark_end = bisect_right(benchmark_dates_sorted, signal_date)
         benchmark_prefix = benchmark_rows[:benchmark_end]
-        targets = [] if state.get("risk_locked", False) else select_targets(
-            prefix_data, strategy_name, benchmark_bars=benchmark_prefix
-        )
+
+        # This recovery policy exists only inside historical research. It does not modify
+        # the production paper-trader state machine or its permanent drawdown lock.
+        if state.get("risk_locked", False):
+            targets = []
+            market_above_sma = _benchmark_above_sma(benchmark_prefix, 200)
+            if (
+                risk_policy == RISK_POLICY_NIFTY_REENTRY
+                and active_lock_date is not None
+                and signal_date >= active_lock_date
+                and _benchmark_below_sma(benchmark_prefix, 200)
+            ):
+                benchmark_was_below_sma_since_lock = True
+            can_reenter = (
+                risk_policy == RISK_POLICY_NIFTY_REENTRY
+                and active_lock_date is not None
+                and signal_date > active_lock_date
+                and benchmark_was_below_sma_since_lock
+                and not state["positions"]
+                and market_above_sma
+            )
+            if can_reenter:
+                recovery_targets = select_targets(
+                    prefix_data, strategy_name, benchmark_bars=benchmark_prefix
+                )
+                # Require an eligible target with a usable next-open fill before unlocking.
+                executable_target_exists = False
+                for symbol in recovery_targets:
+                    row = indexed.get(symbol, ([], {}))[1].get(fill_date)
+                    if row is None:
+                        continue
+                    try:
+                        opening = float(row.get("open", 0))
+                    except (TypeError, ValueError):
+                        continue
+                    if opening > 0 and isfinite(opening):
+                        executable_target_exists = True
+                        break
+                if executable_target_exists:
+                    state["risk_locked"] = False
+                    # Start a fresh drawdown measurement from the simulated re-entry equity.
+                    state["peak_equity"] = round(float(equity_points[-1]["equity"]), 2)
+                    active_lock_date = None
+                    benchmark_was_below_sma_since_lock = False
+                    risk_reentry_dates.append(signal_date)
+                    targets = recovery_targets
+        else:
+            targets = select_targets(
+                prefix_data, strategy_name, benchmark_bars=benchmark_prefix
+            )
+
         if targets:
             signal_days_with_candidates += 1
         opens: dict[str, float] = {}
@@ -217,6 +318,7 @@ def backtest_strategy(
     )
     metrics.update({
         "strategy": strategy_name,
+        "risk_policy": risk_policy,
         "sample_start": equity_points[0]["date"],
         "sample_end": equity_points[-1]["date"],
         "signal_days_with_candidates": signal_days_with_candidates,
@@ -226,12 +328,25 @@ def backtest_strategy(
         "sessions_with_positions": sessions_with_positions,
         "risk_lock_triggered": risk_lock_date is not None,
         "risk_lock_date": risk_lock_date,
+        "risk_lock_events": risk_lock_events,
+        "risk_reentry_dates": risk_reentry_dates,
+        "risk_reentry_count": len(risk_reentry_dates),
         "risk_lock_active_at_end": bool(state.get("risk_locked", False)),
         "post_lock_flat_sessions": post_lock_flat_sessions,
         "yearly_results": _yearly_breakdown(equity_points, trades, benchmark_by_date),
         "methodology": (
             "Signals use data available through each close; target orders fill at next session open with configured costs/slippage. "
-            "The configured 10% drawdown lock is permanent in this simulation, so results stay in cash after the lock triggers."
+            + (
+                "The normal permanent 10% drawdown lock remains in force; after it triggers, the simulation stays in cash."
+                if risk_policy == RISK_POLICY_PERMANENT
+                else (
+                    "Research-only recovery overlay: after a 10% drawdown lock, wait for Nifty to close below its "
+                    "200-session SMA and then later close back above it, with an eligible stock target and usable "
+                    "next-open price. The simulation resumes at the next open and resets the drawdown reference peak "
+                    "to re-entry equity. "
+                    "This policy is not used by the scheduled paper trader."
+                )
+            )
         ),
     })
     return metrics
@@ -243,6 +358,7 @@ def _walk_forward_checks(
     strategy_name: str,
     fold_sessions: int = 126,
     max_folds: int = 4,
+    risk_policy: str = RISK_POLICY_PERMANENT,
 ) -> dict[str, Any]:
     """Evaluate a fixed rule on consecutive, non-overlapping recent half-year test folds."""
     dates = benchmark_dates(bars_by_symbol)
@@ -265,12 +381,15 @@ def _walk_forward_checks(
             symbol: [row for row in rows if str(row.get("date", "")) <= end_date]
             for symbol, rows in bars_by_symbol.items()
         }
-        candidate = backtest_strategy(prefix, strategy_name, sample_days=fold_sessions)
+        candidate = backtest_strategy(
+            prefix, strategy_name, sample_days=fold_sessions, risk_policy=risk_policy
+        )
         keys = (
             "status", "sample_start", "sample_end", "sessions", "total_return_pct",
             "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
             "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
-            "risk_lock_triggered", "risk_lock_date",
+            "risk_policy", "risk_lock_triggered", "risk_lock_date", "risk_lock_events",
+            "risk_reentry_count", "risk_reentry_dates", "risk_lock_active_at_end",
         )
         folds.append({
             "fold": fold_number + 1,
@@ -290,11 +409,83 @@ def _walk_forward_checks(
             and float(fold["excess_return_vs_nifty_pct"]) > 0 for fold in valid
         ),
         "folds": folds,
+        "risk_policy": risk_policy,
         "interpretation": (
             "Chronological fixed-rule validation on consecutive, non-overlapping test periods. "
             "The strategy is not re-tuned between folds; each fold starts with a fresh simulated portfolio, "
             "so this is not a single deployable compounded equity curve and does not prove future profitability."
         ),
+    }
+
+
+def _compact_risk_metrics(candidate: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "status", "risk_policy", "sample_start", "sample_end", "sessions", "total_return_pct",
+        "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+        "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+        "risk_lock_triggered", "risk_lock_date", "risk_lock_events",
+        "risk_reentry_count", "risk_reentry_dates", "risk_lock_active_at_end",
+    )
+    return {key: candidate.get(key) for key in keys if key in candidate}
+
+
+def _risk_recovery_comparison(
+    bars_by_symbol: dict[str, list[dict[str, Any]]],
+    baseline_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Compare a permanent lock with a research-only Nifty-200-SMA recovery overlay."""
+    recovery_full = backtest_strategy(
+        bars_by_symbol,
+        ACTIVE_STRATEGY,
+        sample_days=756,
+        risk_policy=RISK_POLICY_NIFTY_REENTRY,
+    )
+    recovery_folds = _walk_forward_checks(
+        bars_by_symbol,
+        ACTIVE_STRATEGY,
+        fold_sessions=126,
+        max_folds=4,
+        risk_policy=RISK_POLICY_NIFTY_REENTRY,
+    )
+    permanent_folds = baseline_result.get("walk_forward") or _walk_forward_checks(
+        bars_by_symbol,
+        ACTIVE_STRATEGY,
+        fold_sessions=126,
+        max_folds=4,
+        risk_policy=RISK_POLICY_PERMANENT,
+    )
+    status = "ok" if recovery_full.get("status") == "ok" and recovery_folds.get("status") == "ok" else "partial"
+    return {
+        "status": status,
+        "strategy": ACTIVE_STRATEGY,
+        "policies": [
+            {
+                "policy": RISK_POLICY_PERMANENT,
+                "label": "Permanent 10% drawdown lock",
+                "full_sample": _compact_risk_metrics(baseline_result),
+                "walk_forward": permanent_folds,
+            },
+            {
+                "policy": RISK_POLICY_NIFTY_REENTRY,
+                "label": "Resume after Nifty closes above its 200-day average",
+                "full_sample": _compact_risk_metrics(recovery_full),
+                "walk_forward": recovery_folds,
+            },
+        ],
+        "methodology": (
+            "Both policies use the same active strategy and market data. The recovery overlay remains in cash after "
+            "a drawdown lock until Nifty closes below its 200-session SMA and then later closes back above it, with "
+            "at least one eligible target and a valid next-open price. Re-entry happens at the next open; the risk "
+            "reference peak resets to re-entry equity. The scheduled paper trader and its permanent lock are not changed."
+        ),
+        "limitations": [
+            "The four 126-session fold portfolios restart independently; they are not one compounded equity curve.",
+            "A small number of historical windows does not establish future profitability.",
+            "Nifty is a price-index benchmark, the constituent universe has survivorship bias, and market-data quality can vary.",
+            "This is a research-only policy comparison, not permission to place real-money orders.",
+        ],
+        "applies_to_scheduled_paper_trader": False,
+        "active_strategy_changes_automatically": False,
     }
 
 
@@ -422,8 +613,23 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "Coverage checks do not guarantee accuracy or predict future performance."
         )
 
+    risk_recovery_comparison: dict[str, Any] = {
+        "status": "blocked_insufficient_market_data",
+        "message": "Risk-recovery comparison is withheld because the research data-quality gate did not pass.",
+        "policies": [],
+        "applies_to_scheduled_paper_trader": False,
+    }
+    if quality_status == "ok":
+        active_result = next(
+            (item for item in results if item.get("strategy") == ACTIVE_STRATEGY and item.get("status") == "ok"),
+            None,
+        )
+        if active_result is not None:
+            risk_recovery_comparison = _risk_recovery_comparison(bars_by_symbol, active_result)
+
     return {
         "status": quality_status,
+        "risk_recovery_comparison": risk_recovery_comparison,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
         "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
