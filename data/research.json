@@ -3,7 +3,16 @@
   "active_strategy_changes_automatically": false,
   "benchmark": "Nifty 50 index price series from Yahoo Finance; not a total-return benchmark",
   "data_source": "Yahoo Finance via yfinance; research-only and may be delayed, incomplete, or unavailable",
-  "generated_at_utc": "2026-10-18T13:28:08+00:00",
+  "generated_at_utc": "2026-10-18T13:30:38+00:00",
+  "market_data_coverage": {
+    "latest_common_signal_date": "2026-10-15",
+    "max_stock_bars": 0,
+    "min_stock_bars": 0,
+    "stock_symbols_downloaded": 0,
+    "stock_symbols_with_200_or_more_bars": 0,
+    "stock_symbols_with_260_or_more_bars": 0,
+    "symbols_scored_on_latest_common_signal_date": 0
+  },
   "results": [
     {
       "annualized_return_pct": 0.0,
