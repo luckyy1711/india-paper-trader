@@ -6,3 +6,6 @@ venv/
 .env.*
 .pytest_cache/
 .DS_Store
+
+# Local pre-migration crypto state backups (do not commit to remote)
+data/crypto_state.hourly-backup-*.json
