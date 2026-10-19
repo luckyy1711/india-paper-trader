@@ -81,10 +81,12 @@ td.wrap{white-space:normal;min-width:160px}
   <div class="stat"><small>Starting virtual money</small><strong id="initial">—</strong></div>
   <div class="stat"><small>Available cash</small><strong id="cash">—</strong></div>
   <div class="stat"><small>Invested now · market value</small><strong id="invested">—</strong></div>
+  <div class="stat"><small>Purchase cost of open holdings</small><strong id="open-cost">—</strong></div>
   <div class="stat"><small>Total account value</small><strong id="equity">—</strong></div>
   <div class="stat"><small>Profit from completed SELLs</small><strong id="realized">—</strong></div>
   <div class="stat"><small>Unrealized profit on holdings</small><strong id="unrealized">—</strong></div>
   <div class="stat"><small>Total money spent on BUYs</small><strong id="lifetime-buy">—</strong></div>
+  <div class="stat"><small>Cash received from SELLs</small><strong id="lifetime-sell">—</strong></div>
   <div class="stat"><small>Total recorded trading fees</small><strong id="fees">—</strong></div>
  </div>
  <div class="exposure">
@@ -180,7 +182,7 @@ function showPortfolio(){
   +(signal.buy?'BUY candidate':'NO new buy candidate')+' · '+(signal.explanation||'Not available')
   +'. A candidate is not the same as a recorded virtual fill.';
  if(!p){
-  for(const id of ['invested','equity','realized','unrealized','lifetime-buy','fees','pnl','pnl-pct','cash-pct','asset-pct','buys','sells']){
+  for(const id of ['invested','equity','realized','unrealized','open-cost','lifetime-buy','lifetime-sell','fees','pnl','pnl-pct','cash-pct','asset-pct','buys','sells']){
    $(id).textContent='—';
   }
   $('cash-bar').style.width='0%';$('asset-bar').style.width='0%';
@@ -188,6 +190,8 @@ function showPortfolio(){
   $('basis-note').textContent='Accounting snapshot missing. Update the crypto trading engine, then wait for its next saved confirmed candle.';
  }else{
   fmt('invested',p.holdings_market_value_usd);
+  fmt('open-cost',p.open_cost_basis_usd);
+  fmt('lifetime-sell',p.lifetime_sell_proceeds_usd);
   fmt('equity',p.portfolio_equity_usd);
   fmt('lifetime-buy',p.lifetime_buy_spend_usd);
   fmt('fees',p.total_recorded_fees_usd);
