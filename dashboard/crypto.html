@@ -336,57 +336,26 @@ function renderTrades(){
  }
  host.appendChild(table);
 }
-function setup(canvas){
- const ratio=Math.min(2,window.devicePixelRatio||1),w=Math.max(280,canvas.clientWidth),h=canvas.clientHeight;
- canvas.width=Math.floor(w*ratio);canvas.height=Math.floor(h*ratio);
- const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);
- return {ctx,w,h};
-}
 function draw(){
- const selection=currentRows(),all=selection.rows.map(item=>({
-  ...item,open:Number(item.open),close:Number(item.close),low:Number(item.low),high:Number(item.high),
- }));
- const rows=all.slice(-110),{ctx:c,w,h}=setup($('chart'));c.clearRect(0,0,w,h);
- if(!rows.length){c.fillStyle='#9aafc4';c.font='14px system-ui';c.fillText('No candle data available',18,30);
-  $('price').textContent='—';return;}
- const left=14,right=94,top=20,bottom=30,plotW=Math.max(30,w-left-right);
- const min=Math.min(...rows.map(p=>p.low)),max=Math.max(...rows.map(p=>p.high));
- const pad=Math.max((max-min)*.08,max*.0004),lo=min-pad,hi=max+pad,span=hi-lo;
- const y=v=>top+(hi-v)/span*(h-top-bottom),step=plotW/rows.length;
- c.font='12px system-ui';
- for(let i=0;i<5;i++){
-  const level=lo+i*span/4, yy=y(level);
-  c.strokeStyle='#294052';c.beginPath();c.moveTo(left,yy);c.lineTo(w-right,yy);c.stroke();
-  c.fillStyle='#9aafc4';c.fillText(level.toFixed(2),w-right+5,yy+4);
- }
- rows.forEach((p,i)=>{
-  const x=left+(i+.5)*step;
-  c.strokeStyle=c.fillStyle=p.close>=p.open?'#51e7b7':'#ff667f';
-  c.beginPath();c.moveTo(x,y(p.high));c.lineTo(x,y(p.low));c.stroke();
-  c.fillRect(x-Math.max(1,step*.28),y(Math.max(p.open,p.close)),Math.max(2,step*.56),
-   Math.max(1,Math.abs(y(p.open)-y(p.close))));
+ const selection=currentRows();
+ const rows=selection.rows;
+ const symbol=symbolSelect.value;
+ if(window.NeonTradingChart)window.NeonTradingChart.render({
+   rows,symbol,source:selection.interval,
+   trades:snapshot?.trades||[],
  });
- // Calculate EMAs on actual candles for the currently selected timeframe.
- for(const [period,color] of [[20,'#f3c66e'],[50,'#69a7ff']]){
-  let ema=null;const series=all.map(p=>{ema=ema===null?p.close:ema+(p.close-ema)*2/(period+1);return ema}).slice(-rows.length);
-  c.strokeStyle=color;c.lineWidth=1.5;c.beginPath();
-  series.forEach((v,i)=>{const x=left+(i+.5)*step;i?c.lineTo(x,y(v)):c.moveTo(x,y(v))});c.stroke();
- }
- c.lineWidth=1;
- if(!selection.preview || snapshot?.candle_interval==='1m'){
-  for(const trade of snapshot?.trades||[]){
-   if(trade.symbol!==symbolSelect.value)continue;
-   const i=rows.findIndex(p=>(p.time||'')===trade.time);if(i<0)continue;
-   const x=left+(i+.5)*step;c.fillStyle=trade.side==='BUY'?'#51e7b7':'#ff667f';
-   c.fillText(trade.side==='BUY'?'▲ BUY':'▼ SELL',x-18,
-    trade.side==='BUY'?y(rows[i].low)+15:y(rows[i].high)-10);
-  }
- }
  const latest=rows[rows.length-1];
- $('price').textContent=money(latest.close)+(selection.preview?' · 1m preview':' · saved '+selection.interval);
- const liveInfo=selection.preview&&!latest.complete?' (forming candle)':'';
- $('source').textContent=(selection.preview?minute?.provider:((snapshot?.market_sources||{})[symbolSelect.value]))||'saved hourly data';
- $('source').textContent+=' · Latest candle: '+formatTime(latest.time)+liveInfo;
+ if(!latest){
+  $('price').textContent='—';
+  $('source').textContent='No actual exchange candle data for this selection yet.';
+  return;
+ }
+ $('price').textContent=money(latest.close)
+  +(selection.preview?' · 1m market':' · saved '+selection.interval);
+ const provider=(selection.preview?minute?.provider:(snapshot?.market_sources||{})[symbol])||'saved paper data';
+ $('source').textContent=provider+' · Latest candle: '+formatTime(latest.time)
+  +(selection.preview&&latest.complete===false?' (forming)':'')
+  +' · Public market preview cannot place orders.';
 }
 function showFeedStatus(){
  const selected=timeframeSelect.value;
