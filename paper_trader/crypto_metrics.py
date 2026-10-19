@@ -81,6 +81,16 @@ def crypto_performance(state: dict, bars: dict, trades: list[dict]) -> dict:
                 cash_delta = received
                 if received < 0:
                     raise ValueError("Sell fee exceeds proceeds")
+                # Even an incomplete historic journal must display the actual
+                # SELL; never claim a fabricated realized gain when the
+                # corresponding original BUY is missing.
+                latest = {
+                    "time": str(row["time"]), "side": side, "symbol": symbol,
+                    "quantity": quantity, "price": price, "fees_usd": fee,
+                    "notional_usd": notional, "cash_change_usd": cash_delta,
+                    "realized_pnl_usd": None, "reason": str(row.get("reason", "")),
+                }
+                recent_fills.append(latest)
                 remaining = quantity
                 sold_basis = 0.0
                 # FIFO, including the original buy fee allocated to the sold
@@ -115,7 +125,11 @@ def crypto_performance(state: dict, bars: dict, trades: list[dict]) -> dict:
                 "realized_pnl_usd": profit,
                 "reason": str(row.get("reason", "")),
             }
-            recent_fills.append(latest)
+            if side == "SELL":
+                # Replace the pre-recorded SELL after FIFO succeeds.
+                recent_fills[-1] = latest
+            else:
+                recent_fills.append(latest)
         except (ValueError, TypeError, KeyError, ZeroDivisionError, OverflowError):
             accounting_ok = False
             # Do not claim a partial FIFO profit figure is fully reconciled.
