@@ -62,7 +62,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- data/state.json data/trades.csv data/runs.jsonl data/paper_chart.json
+          for file in data/state.json data/trades.csv data/runs.jsonl data/paper_chart.json; do
+            if [ -f "$file" ]; then git add -- "$file"; fi
+          done
           if ! git diff --cached --quiet; then
             git commit -m "Update paper trading records"
             git push
