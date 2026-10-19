@@ -51,7 +51,7 @@ understanding this tradeoff.
 
 - Starts with ₹10,000 in virtual cash.
 - Uses end-of-day adjusted daily OHLC data retrieved through `yfinance` from Yahoo Finance.
-- Uses the `trend_momentum_126` baseline: only consider stocks above their 200-session simple moving average and with positive 126-session momentum; rank eligible stocks by momentum divided by annualized volatility; target up to three positions.
+- Defaults to `nifty_regime_momentum_126`: require the Nifty 50 benchmark and each stock to close above their 200-session moving averages, require positive 126-session stock momentum, then rank eligible stocks by momentum divided by annualized volatility; target up to three positions.
 - Simulates whole-share orders at the next available session's open, with a simplified 0.20% transaction cost and 0.10% adverse slippage per side.
 - Caps intended position sizing at 25% of equity per stock and total equity exposure at 75%.
 - Locks new buys and queues an exit-to-cash target after a 10% peak-to-trough drawdown. The lock remains set for safety; resetting it should require an explicit review.
@@ -77,7 +77,7 @@ Research backtest metrics are withheld unless at least 45 of the 50 stock histor
 
 ## Strategy research lab
 
-The active strategy remains `trend_momentum_126` until a candidate survives separate review and paper trial. Research compares six fixed rule sets, without automatically promoting the top row:
+The default paper-trading strategy is `nifty_regime_momentum_126`. Changes require explicit model selection; research never promotes a candidate automatically. Research compares six fixed rule sets:
 
 - Trend + six-month momentum, volatility-adjusted (current baseline).
 - Medium-term momentum and a 50/200-day moving-average filter.
