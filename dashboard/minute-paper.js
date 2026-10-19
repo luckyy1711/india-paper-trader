@@ -8,7 +8,7 @@
  const KEY='neon-minute-paper-v1';
  const P=['BTCUSDT','ETHUSDT'];
  const FEE=.002,SLIP=.001;
- let history={},live={},online=false,lastFetch=0;
+ let history={},live={},online=false,lastFetch=0,latestDecision='Waiting for first confirmed 1-minute candle';
  const cash=n=>'$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:2});
  const dateString=ts=>new Date(ts).toISOString();
  const initial=()=>({cash:1000,positions:{},peak:1000,locked:false,lastMinute:null,startedAt:new Date().toISOString(),trades:[]});
@@ -21,22 +21,47 @@
  function sell(s,p,price,min,reason){const qty=s.positions[p]||0;if(!qty)return;const exec=price*(1-SLIP);s.cash+=qty*exec*(1-FEE);delete s.positions[p];record(s,'SELL',p,qty,exec,min,reason)}
  function buy(s,p,price,min){if(s.positions[p]||s.locked)return;const budget=Math.min(equity(s)*.25,s.cash);if(budget<5)return;const exec=price*(1+SLIP),qty=budget/(exec*(1+FEE));s.cash-=budget;s.positions[p]=qty;record(s,'BUY',p,qty,exec,min,'1m SMA20 > SMA50 + price above SMA20')}
  function tick(s){
-   const timestamps=P.map(p=>history[p]?.at(-1)?.t);
-   if(timestamps.some(x=>!x)||new Set(timestamps).size!==1)return;
-   const min=timestamps[0];
-   if(s.lastMinute&&min<=s.lastMinute)return;
-   if(s.lastMinute&&min-s.lastMinute>5*60000){s.lastMinute=min;save(s);return}
-   // Never backfill a trade at historical prices when browser wasn't running.
-   if(Date.now()-min>180000)return;
-   const prices=Object.fromEntries(P.map(p=>[p,history[p].at(-1).close]));
-   let e=equity(s);s.peak=Math.max(s.peak,e);
-   if(e<=s.peak*.9){s.locked=true;for(const p of P)sell(s,p,prices[p],min,'10% drawdown risk lock')}
-   if(!s.locked)for(const p of P){
-     const yes=decide(history[p]);
-     if(!yes)sell(s,p,prices[p],min,'Trend exited');
-     else buy(s,p,prices[p],min);
+   // Each market is processed independently: Binance/Coinbase can have different
+   // latest closed 1-minute candles for BTC and ETH.
+   s.lastProcessed=s.lastProcessed||{};
+   const notes=[];
+   let updated=false;
+   for(const p of P){
+     const latest=history[p]?.at(-1);
+     if(!latest){notes.push(p+': no completed candles');continue}
+     const min=latest.t, prior=s.lastProcessed[p]??s.lastMinute??null;
+     const age=Date.now()-(min+60000);
+     if(age>180000){notes.push(p+': stale market candle');continue}
+     if(prior!==null&&min<=prior){notes.push(p+': waiting for new closed minute');continue}
+     if(prior!==null&&min-prior>5*60000){
+       s.lastProcessed[p]=min;updated=true;
+       notes.push(p+': skipped missed minutes (no backfill)');
+       continue;
+     }
+     const price=latest.close;
+     s.peak=Math.max(s.peak,equity(s));
+     if(equity(s)<=s.peak*.9&&!s.locked){
+       s.locked=true;
+       for(const coin of P){
+         if(s.positions[coin]){
+           if(!live[coin]||!Number.isFinite(live[coin]))continue;
+           sell(s,coin,live[coin],min,'10% drawdown risk lock');
+         }
+       }
+     }
+     if(!s.locked){
+       const qualifies=decide(history[p]);
+       if(qualifies)buy(s,p,price,min);
+       else sell(s,p,price,min,'Trend below SMA20/SMA50');
+       notes.push(p+': '+(qualifies?'BUY condition met':'WAIT · trend filter not met'));
+     }else notes.push(p+': locked');
+     s.lastProcessed[p]=min;updated=true;
    }
-   s.lastMinute=min;save(s);
+   if(updated){
+     s.lastMinute=Math.max(...Object.values(s.lastProcessed).filter(Number.isFinite));
+     save(s);
+   }
+   return notes.join(' | ');
  }
  function render(){
    const s=load(),on=Boolean(s),selected=$('symbol').value.replace('-USD','USDT');
@@ -46,7 +71,7 @@
    $('minute-cash').textContent=on?cash(s.cash):'—';$('minute-equity').textContent=on?cash(equity(s)):'—';
    $('minute-fills').textContent=on?String(s.trades.length):'—';
    $('minute-price').textContent=live[selected]?cash(live[selected]):'Unavailable';
-   $('minute-latest').textContent=lastFetch?'Last price refresh '+new Date(lastFetch).toLocaleTimeString():'Waiting for market data';
+   $('minute-latest').textContent=lastFetch?'Last price refresh '+new Date(lastFetch).toLocaleTimeString():'Waiting for market data';\n   $('minute-decision').textContent=latestDecision;
    const rows=on?s.trades.slice(-8).reverse():[];
    $('minute-ledger').textContent=rows.length?rows.map(x=>dateString(x.min)+' '+x.action+' '+x.p+' '+x.qty.toFixed(6)+' @ '+cash(x.price)).join('\n'):'No 1-minute virtual trades yet.';
  }
@@ -84,10 +109,10 @@
        history[P[i]]=rows;live[P[i]]=Number(output[i].at(-1).close);
      }
      online=true;lastFetch=Date.now();
-     const s=load();if(s){tick(s)}
+     const s=load();if(s){latestDecision=tick(s)||'Waiting for new closed 1-minute candle'}else{latestDecision='Price feed connected · demo not started'}
      $('minute-network').textContent=source+' · 1-minute candles. Binance USDT is an approximate USD proxy.';
    }catch(e){
-     online=false;
+     online=false;latestDecision='Price feed failed · no decisions processed';
      $('minute-network').textContent='1-minute feed unavailable ('+e.message+'). No trades processed. Public Binance API access varies by network/region.';
    }
    render();
@@ -95,8 +120,6 @@
  $('minute-toggle').addEventListener('click',()=>{
    const s=load();if(s){if(!confirm('Reset ONLY your browser 1-minute demo? Recorded demo trades will be deleted. GitHub cloud portfolio will NOT change.'))return;localStorage.removeItem(KEY);}
    else{if(!online){$('minute-network').textContent='Market feed unavailable; cannot start.';return}const fresh=initial();fresh.lastMinute=history[P[0]]?.at(-1)?.t||null;save(fresh)}
-   render();
- });
- $('symbol').addEventListener('change',render);
- render();update();setInterval(update,60000);
+   latestDecision='Demo reset or newly started · observing next completed minute';\n   render();\n });\n $('symbol').addEventListener('change',render);
+ render();update();setInterval(update,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)update()});
 })();
