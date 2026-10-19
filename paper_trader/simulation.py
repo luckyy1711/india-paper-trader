@@ -123,6 +123,15 @@ def build_simulation_report(
     if result.get("status") == "ok" and "replay_equity_points" in result:
         scale = float(initial_cash) / INITIAL_CASH
         report["replay"] = {
+            "stock_candles": {
+                symbol: [
+                    {"date": str(row["date"]), **{k: round(float(row[k]), 2) for k in ("open", "high", "low", "close")}}
+                    for row in rows if str(row.get("date")) in {p["date"] for p in result["replay_equity_points"]}
+                    and all(row.get(k) is not None and math.isfinite(float(row[k])) and float(row[k]) > 0 for k in ("open", "high", "low", "close"))
+                ]
+                for symbol, rows in stocks.items()
+                if symbol in {t["symbol"] for t in result["replay_trades"]}
+            },
             "benchmark_candles": [
                 {"date": str(row["date"]), **{k: round(float(row[k]), 2) for k in ("open", "high", "low", "close")}}
                 for row in benchmark
