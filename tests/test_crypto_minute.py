@@ -153,13 +153,13 @@ class MinutePaperTests(unittest.TestCase):
         state = account.fresh_state()
         state["bar_interval"] = "1m"
         state["cash"] = 750
-        state["positions"]["BTC-USD"] = .003
+        state["positions"]["BTC-USD"] = 2.5
         state["entry_prices"]["BTC-USD"] = 101
         sources = {symbol: "fake" for symbol in bot.SYMBOLS}
         bars = self.both_bars()
         result = bot.process_minute(state, bars, sources, bars["BTC-USD"][-1]["time"])
         self.assertEqual(result["virtual_fills"], [])
-        self.assertEqual(state["positions"], {"BTC-USD": .003})
+        self.assertEqual(state["positions"], {"BTC-USD": 2.5})
 
     def test_journal_recovery_is_idempotent(self):
         fill = {
