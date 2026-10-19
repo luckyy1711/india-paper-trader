@@ -144,7 +144,7 @@ The core engine is independent of GitHub Actions. A future Linux mini PC can run
 
 ## Stock terminal: model switching, reasons, and comparisons
 
-The stock terminal is at `dashboard/paper.html`. It is a **read-only snapshot of actual daily OHLC and completed virtual fills**, not a live broker chart. The stock dropdown displays 6 rule-based strategies. Selecting one shows its candidates and their trend average, momentum, volatility-adjusted ranking score, and sample rejection reasons. Different rules can select the same stocks. Recorded BUY/SELL markers only appear when a virtual order actually fills; model candidates are not filled trades.
+The stock terminal is at `dashboard/paper.html`. It is a **read-only snapshot of actual daily OHLC and completed virtual fills**, not a live broker chart. The stock dropdown displays 7 rule-based strategies. Selecting one shows its candidates and their trend average, momentum, volatility-adjusted ranking score, and sample rejection reasons. Different rules can select the same stocks. Recorded BUY/SELL markers only appear when a virtual order actually fills; model candidates are not filled trades.
 
 Run from the project root with your virtual environment enabled:
 
@@ -173,3 +173,27 @@ python -m paper_trader.model_select --set medium_momentum_63 --cancel-pending
 The model chosen for an existing saved portfolio and the last 100 model-switch audit events live **atomically in the portfolio's `data/state.json`**, which the stock cloud workflow already preserves. A pre-first-run choice can still live in the legacy `data/selected_strategy.json`. On Linux, the CLI and daily runner serialize modifications using a local file lock. Avoid editing state files by hand.
 
 The comparison table displays **previously computed research backtests** from `data/research.json` (about 252 and 756 sessions), not current paper-account performance. It shows the source dates and withholds results if the existing research quality gate failed. The exporter does not retrain models or rerun expensive backtests. Historical returns and drawdowns are affected by data limitations, survivor bias, transaction-cost assumptions and the permanent paper risk lock; they cannot establish future profitability. LightGBM remains research-only.
+
+## Local 1-minute market preview (1-second screen refresh)
+
+For the stock terminal, you can switch from the original static daily chart to an **unofficial 1-minute Yahoo candle feed**. The browser polls your **local** server once per second; the server uses a 60-second per-symbol cache, so it does **not** request fresh NSE/Yahoo prices every second. Source candles can lag and remain unchanged for minutes or overnight. The screen shows the actual provider candle timestamp, fetch time and cache age. **This is not tick-by-tick, licensed or guaranteed real-time market data.** A true real-time NSE feed requires an authorized provider; never fabricate prices between updates.
+
+From the project root, after activating `.venv`:
+
+```bash
+python -m unittest discover -s tests -v
+python -m paper_trader.paper_chart
+python -m paper_trader.intraday_feed --port 8080
+```
+
+Open `http://127.0.0.1:8080/dashboard/paper.html` and select `1m · Yahoo delayed`. The feed is limited to the configured Nifty 50 symbols and binds to **127.0.0.1 only**, with no broker credentials, trading endpoint or portfolio-state modifications. If you already started `python -m http.server 8080`, stop it with Ctrl+C before starting `intraday_feed` on the same port. If Yahoo fails, the chart shows a warning and falls back to the last daily snapshot. Existing static hosting works in daily-only mode.
+
+**New opt-in paper strategy:** `confirmed_regime_momentum_126`. In addition to 200-session stock/benchmark trend and 126-session risk-adjusted momentum, it requires daily EMA20 above EMA50, Wilder RSI14 50–75, MACD(12,26,9) histogram positive and Wilder ATR14 at 0.5–5% of price. Missing OHLC data fails closed. Only *daily completed signals* feed the existing next-session simulated-open execution model and position/risk caps. **1-minute candles are visualization only** and cannot trigger buys or sells. Neither existing paper holdings nor the selected strategy are changed automatically.
+
+To opt into the new model on a local portfolio:
+
+```bash
+python -m paper_trader.model_select --set confirmed_regime_momentum_126
+```
+
+If the command refuses because of unfilled pending signals, review them before deciding whether to add `--cancel-pending` (which removes those unfilled targets). The new rule has not been established to outperform earlier strategies. Run separate historical and walk-forward comparisons before relying on it. Local model selections do not synchronize themselves to a separately scheduled GitHub Actions portfolio.
