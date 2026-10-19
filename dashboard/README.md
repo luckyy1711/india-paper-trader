@@ -39,3 +39,11 @@ python -m paper_trader.intraday_feed --port 8080
 ```
 
 Open `http://127.0.0.1:8080/dashboard/crypto.html`; select **1m public market preview** or **1h saved paper candles**. Client polling is once per second; upstream is at most once per 10 seconds per symbol, never a guaranteed real-time exchange subscription. Stale/failed data is labeled and previous actual candles can be shown without fabricating updates. The paper-trading bot remains an independent hourly process; virtual cash and fill history refresh from its saved snapshot every 15 seconds and are not modified by this chart.
+
+## Minute crypto paper fills (new)
+
+Unlike the preview-only 1-minute market graph, `paper_trader.crypto_minute --loop` now **advances the BTC/ETH virtual strategy on completed 1-minute candles**. Start it separately, once, on a Linux host after stopping the original hourly crypto runner. It checks for the next confirmed candle every 15 seconds; there is at most one portfolio decision per candle and there is no obligation to trade on every candle. Existing BTC/ETH cash, holdings and completed fills are retained; the legacy unfilled hourly target is cancelled at migration and a private backup is made.
+
+The crypto screen's **Saved paper fills** timeframe adapts to 1 minute once the engine writes its first minute snapshot. Recorded virtual BUY/SELL markers appear on matching saved/preview minute candles, and the fill table updates every 15 seconds from the independent runner's saved file. This page does not submit trading orders, control the runner or claim that its public minute preview is an execution-grade feed.
+
+Open `http://127.0.0.1:8081/dashboard/crypto.html` when the preview server is on port 8081. `python -m paper_trader.crypto_minute --status` displays the portfolio. A laptop in sleep or power-off cannot run minute trades.
