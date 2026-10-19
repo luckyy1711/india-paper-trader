@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from .symbols import YAHOO_TICKERS
+from .crypto_preview import CryptoPreviewCache
 
 ROOT = Path(__file__).resolve().parents[1]
 IST = ZoneInfo("Asia/Kolkata")
@@ -105,21 +106,25 @@ class QuoteCache:
 
 
 class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, cache: QuoteCache, **kwargs):
+    def __init__(self, *args, cache: QuoteCache, crypto_cache: CryptoPreviewCache, **kwargs):
         self.cache = cache
+        self.crypto_cache = crypto_cache
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
     def do_GET(self):
         url = urlsplit(self.path)
-        if url.path != "/api/intraday":
+        if url.path not in ("/api/intraday", "/api/crypto-preview"):
             return super().do_GET()
         symbol = parse_qs(url.query).get("symbol", [""])[0]
         try:
-            payload = self.cache.get(symbol)
+            if url.path == "/api/crypto-preview":
+                payload = self.crypto_cache.get(symbol)
+            else:
+                payload = self.cache.get(symbol)
             status = 200
         except ValueError:
             status = 400
-            payload = {"status": "error", "message": "Select a supported Nifty 50 symbol"}
+            payload = {"status": "error", "message": "Unsupported symbol for this preview feed"}
         body = json.dumps(payload, allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -137,10 +142,12 @@ def main() -> None:
     if not 1024 <= args.port <= 65535:
         parser.error("Use an unprivileged port between 1024 and 65535")
     cache = QuoteCache()
-    handler = partial(Handler, cache=cache)
+    crypto_cache = CryptoPreviewCache()
+    handler = partial(Handler, cache=cache, crypto_cache=crypto_cache)
     with ThreadingHTTPServer(("127.0.0.1", args.port), handler) as server:
         print(f"Paper chart: http://127.0.0.1:{args.port}/dashboard/paper.html", flush=True)
         print("1-second local dashboard polling; provider fetches capped at once per symbol per 60 seconds.", flush=True)
+        print("Crypto BTC/ETH 1m preview checks a public exchange feed every 10 seconds.", flush=True)
         print("Unofficial/delayed feed; no broker integration, no tick trades.", flush=True)
         try:
             server.serve_forever()
