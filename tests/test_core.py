@@ -40,7 +40,7 @@ class CoreTests(unittest.TestCase):
         self.assertIn("relative_strength_12_1", STRATEGIES)
         self.assertIn("dual_momentum_6_12", STRATEGIES)
         self.assertIn("nifty_regime_momentum_126", STRATEGIES)
-        self.assertEqual(ACTIVE_STRATEGY, "trend_momentum_126")
+        self.assertEqual(ACTIVE_STRATEGY, "nifty_regime_momentum_126")
 
     def test_12_1_and_dual_momentum_need_long_enough_positive_history(self):
         rising = make_bars(400, lambda i: 100 + i * 0.2 + (i % 7) * 0.05)
