@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from paper_trader.config import MIN_RESEARCH_BENCHMARK_BARS, STRATEGIES
+from paper_trader.config import ACTIVE_STRATEGY, MIN_RESEARCH_BENCHMARK_BARS, STRATEGIES
 from unittest.mock import patch
 
 from paper_trader.research import (
@@ -34,6 +34,8 @@ class ResearchQualityGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked_insufficient_market_data")
         self.assertEqual(report["data_quality"]["status"], "blocked_insufficient_market_data")
         self.assertEqual(report["market_data_coverage"]["stock_symbols_downloaded"], 1)
+        self.assertEqual(report["open_source_models"][0]["status"], "blocked_insufficient_market_data")
+        self.assertFalse(report["open_source_models"][0]["auto_promoted"])
         self.assertEqual(len(report["results"]), len(STRATEGIES))
         for result in report["results"]:
             self.assertEqual(result["status"], "blocked_insufficient_market_data")
@@ -75,7 +77,7 @@ class ResearchQualityGateTests(unittest.TestCase):
             report = build_research_report({"__BENCHMARK__": benchmark, **stocks})
 
         self.assertEqual(report["status"], "ok")
-        self.assertEqual(mocked.call_count, len(STRATEGIES) * 9 + 5)
+        self.assertEqual(mocked.call_count, len(STRATEGIES) * 9 + 6)
         for result in report["results"]:
             self.assertIn("robustness", result)
             self.assertEqual(set(result["robustness"]["period_sensitivity"]), {"252", "504", "756"})
@@ -84,7 +86,7 @@ class ResearchQualityGateTests(unittest.TestCase):
             self.assertEqual(result["walk_forward"]["status"], "ok")
             self.assertEqual(result["walk_forward"]["completed_folds"], 4)
             self.assertEqual(len(result["walk_forward"]["folds"]), 4)
-        self.assertEqual(report["active_strategy"], "trend_momentum_126")
+        self.assertEqual(report["active_strategy"], ACTIVE_STRATEGY)
         self.assertFalse(report["active_strategy_changes_automatically"])
         comparison = report["risk_recovery_comparison"]
         self.assertEqual(comparison["status"], "ok")

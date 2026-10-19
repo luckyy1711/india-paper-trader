@@ -19,6 +19,7 @@ from .config import (
 )
 from .core import benchmark_dates, execute_rebalance, mark_to_market, score_symbol, select_targets, new_state
 from .symbols import NIFTY50_SYMBOLS
+from .ml_research import MODEL_NAME as OPEN_SOURCE_ML_MODEL_NAME, backtest_lightgbm_research
 
 
 def _metrics(equities: list[float], trade_count: int, session_count: int) -> dict[str, Any]:
@@ -294,7 +295,49 @@ def backtest_strategy(
             record_session(fill_date)
             continue
 
-        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier))
+        # Experimental, close-known multi-indicator confirmation; never claims a probability.
+        # Only applies to historical Nifty-regime research, not live paper positions.
+        target_weights = None
+        if strategy_name == "nifty_regime_momentum_126":
+            def confirmed_weight(symbol):
+                rows = prefix_data.get(symbol, [])
+                closes = [float(r["close"]) for r in rows if float(r.get("close", 0)) > 0]
+                if len(closes) < 201:
+                    return 0.0
+                latest = closes[-1]
+                ema50 = closes[0]
+                ema200 = closes[0]
+                for price in closes[1:]:
+                    ema50 += (2 / 51) * (price - ema50)
+                    ema200 += (2 / 201) * (price - ema200)
+                if not (latest > ema50 > ema200):
+                    return 0.0
+                momentum = latest / closes[-64] - 1
+                if momentum <= 0:
+                    return 0.0
+                changes = [closes[i] - closes[i - 1] for i in range(len(closes) - 14, len(closes))]
+                gain = sum(max(d, 0) for d in changes) / 14
+                loss = sum(max(-d, 0) for d in changes) / 14
+                rsi = 100 if loss == 0 else 100 - 100 / (1 + gain / loss)
+                if rsi >= 75 or rsi < 45:
+                    return 0.0
+                recent_returns = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 20, len(closes))]
+                annual_vol = statistics.pstdev(recent_returns) * sqrt(252)
+                if annual_vol > 0.55:
+                    return 0.0
+                score = score_symbol(rows, strategy_name)
+                if score is None or not isfinite(float(score)) or score <= 0:
+                    return 0.0
+                # 50% only when several indicators agree and volatility is low.
+                if momentum > 0.12 and 52 <= rsi <= 68 and annual_vol < 0.30 and latest > ema50 * 1.03:
+                    return 0.50
+                if momentum > 0.05 and 48 <= rsi <= 72 and annual_vol < 0.40:
+                    return 0.25
+                return 0.075
+
+            target_weights = {symbol: confirmed_weight(symbol) for symbol in valid_targets}
+            valid_targets = [symbol for symbol in valid_targets if target_weights[symbol] > 0]
+        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier, target_weights=target_weights, research_position_cap=0.50 if target_weights is not None else None))
         nav = mark_to_market(state, closes)["equity"]
         equity_points.append({"date": fill_date, "equity": nav})
         record_session(fill_date)
@@ -334,6 +377,8 @@ def backtest_strategy(
         "risk_lock_active_at_end": bool(state.get("risk_locked", False)),
         "post_lock_flat_sessions": post_lock_flat_sessions,
         "yearly_results": _yearly_breakdown(equity_points, trades, benchmark_by_date),
+        "replay_equity_points": equity_points,
+        "replay_trades": trades,
         "methodology": (
             "Signals use data available through each close; target orders fill at next session open with configured costs/slippage. "
             + (
@@ -489,6 +534,16 @@ def _risk_recovery_comparison(
     }
 
 
+def _compact_open_source_metrics(candidate: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "status", "sample_start", "sample_end", "sessions", "evaluation_sessions",
+        "total_return_pct", "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+        "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+        "model_refresh_count", "training_sample_count_last_fit",
+    )
+    return {key: candidate.get(key) for key in keys if key in candidate}
+
+
 def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     """Build a multi-year comparison and withhold results when input coverage is inadequate."""
     dates = benchmark_dates(bars_by_symbol)
@@ -613,6 +668,105 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "Coverage checks do not guarantee accuracy or predict future performance."
         )
 
+    # Open-source ML candidate is isolated from the six rule-based strategies. It never
+    # changes ACTIVE_STRATEGY; all model training is chronological and paper-only.
+    open_source_models: list[dict[str, Any]] = []
+    if quality_status != "ok":
+        open_source_models = [{
+            "strategy": OPEN_SOURCE_ML_MODEL_NAME,
+            "status": "blocked_insufficient_market_data",
+            "model_family": "LightGBM gradient-boosted decision trees",
+            "active_strategy": False,
+            "auto_promoted": False,
+            "trade_count": 0,
+            "message": quality_message,
+        }]
+    else:
+        try:
+            ml_base = backtest_lightgbm_research(bars_by_symbol, cost_multiplier=1.0)
+            if ml_base.get("status") == "ok":
+                # Compare the ML candidate and active rule over exactly the same evaluation dates.
+                # The rule backtest uses the same fill/cost engine but its own rule-based signals.
+                ml_sessions = int(ml_base.get("sessions", 0))
+                aligned_rule = backtest_strategy(
+                    bars_by_symbol, ACTIVE_STRATEGY, sample_days=max(20, ml_sessions)
+                )
+                comparison_keys = (
+                    "status", "sample_start", "sample_end", "sessions", "total_return_pct",
+                    "annualized_return_pct", "sharpe_approx", "max_drawdown_pct",
+                    "benchmark_total_return_pct", "excess_return_vs_nifty_pct", "trade_count",
+                    "risk_lock_triggered", "risk_lock_date", "risk_lock_active_at_end",
+                )
+                if (
+                    aligned_rule.get("status") == "ok"
+                    and aligned_rule.get("sample_start") == ml_base.get("sample_start")
+                    and aligned_rule.get("sample_end") == ml_base.get("sample_end")
+                ):
+                    ml_base["same_period_rule_baseline"] = {
+                        key: aligned_rule[key] for key in comparison_keys if key in aligned_rule
+                    }
+                    ml_base["same_period_comparison"] = {
+                        "status": "ok",
+                        "sample_start": ml_base.get("sample_start"),
+                        "sample_end": ml_base.get("sample_end"),
+                        "sessions": ml_base.get("sessions"),
+                        "model_total_return_pct": ml_base.get("total_return_pct"),
+                        "rule_total_return_pct": aligned_rule.get("total_return_pct"),
+                        "benchmark_total_return_pct": ml_base.get("benchmark_total_return_pct"),
+                        "model_excess_return_vs_nifty_pct": ml_base.get("excess_return_vs_nifty_pct"),
+                        "rule_excess_return_vs_nifty_pct": aligned_rule.get("excess_return_vs_nifty_pct"),
+                        "model_minus_rule_return_pp": round(
+                            float(ml_base.get("total_return_pct", 0))
+                            - float(aligned_rule.get("total_return_pct", 0)), 3
+                        ),
+                        "risk_policy": "Both simulations use the existing permanent 10% drawdown lock.",
+                        "interpretation": (
+                            "Aligned-date comparison using the same initial virtual cash, next-session-open "
+                            "fills, and base transaction-cost/slippage assumptions. This is historical research, "
+                            "not evidence of future profitability."
+                        ),
+                    }
+                else:
+                    ml_base["same_period_comparison"] = {
+                        "status": "date_alignment_failed",
+                        "message": "The model and rule baseline did not produce identical evaluation dates; no direct return comparison is reported.",
+                    }
+                sensitivity: dict[str, dict[str, Any]] = {"1.0": _compact_open_source_metrics(ml_base)}
+                for multiplier in (1.5, 2.0):
+                    stressed = backtest_lightgbm_research(
+                        bars_by_symbol, cost_multiplier=multiplier
+                    )
+                    sensitivity[str(multiplier)] = _compact_open_source_metrics(stressed)
+                valid_costs = [
+                    value for value in sensitivity.values()
+                    if value.get("status") == "ok"
+                    and isinstance(value.get("total_return_pct"), (int, float))
+                ]
+                ml_base["robustness"] = {
+                    "cost_sensitivity": sensitivity,
+                    "cost_scenarios_tested": len(valid_costs),
+                    "positive_return_cost_scenarios": sum(
+                        float(value["total_return_pct"]) > 0 for value in valid_costs
+                    ),
+                    "interpretation": (
+                        "The same fixed LightGBM training and signal schedule is re-simulated with "
+                        "1.0x, 1.5x, and 2.0x transaction-cost/slippage assumptions. These are cost "
+                        "sensitivity checks, not independent validation."
+                    ),
+                }
+            open_source_models = [ml_base]
+        except Exception as exc:
+            open_source_models = [{
+                "strategy": OPEN_SOURCE_ML_MODEL_NAME,
+                "status": "error",
+                "model_family": "LightGBM gradient-boosted decision trees",
+                "active_strategy": False,
+                "auto_promoted": False,
+                "trade_count": 0,
+                "error_type": type(exc).__name__,
+                "message": "The open-source model research run failed; rule-based results remain separate.",
+            }]
+
     risk_recovery_comparison: dict[str, Any] = {
         "status": "blocked_insufficient_market_data",
         "message": "Risk-recovery comparison is withheld because the research data-quality gate did not pass.",
@@ -644,6 +798,7 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "robustness_checks": "Each fixed strategy is re-tested over 252-, 504-, and 756-session windows, plus 1.5x and 2.0x transaction-cost/slippage scenarios. These overlapping windows are sensitivity checks, not independent validation.",
             "walk_forward_checks": "Each strategy is tested on four consecutive 126-session chronological folds with no overlap between return intervals. Each fold uses a fresh simulated portfolio; results are not one compounded equity curve and do not prove future profitability.",
             "candidate_policy": "Candidates are research-only and never automatically replace the active strategy.",
+            "open_source_model": "A separate LightGBM alpha-regression candidate follows an expanding-window process; a 21-session label is only used for training after the outcome window has ended. Cost sensitivity is tested at 1.0x, 1.5x, and 2.0x.",
             "limitations": [
                 "Current index constituents introduce survivorship bias.",
                 "Yahoo Finance data is unofficial and may be revised or incomplete.",
@@ -670,4 +825,5 @@ def build_research_report(bars_by_symbol: dict[str, list[dict[str, Any]]]) -> di
             "survivorship bias; metrics are not forecasts. Paper-trial candidates separately before considering promotion."
         ),
         "results": results,
+        "open_source_models": open_source_models,
     }

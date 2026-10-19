@@ -14,7 +14,6 @@ from typing import Any
 from .config import ACTIVE_STRATEGY, MIN_CURRENT_SYMBOL_COVERAGE
 from .core import benchmark_dates, execute_rebalance, first_session_after, mark_to_market, new_state, select_targets
 from .market_data import BENCHMARK_KEY, download_market_data
-from .research import build_research_report
 from .symbols import NIFTY50_SYMBOLS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +21,6 @@ DATA_DIR = ROOT / "data"
 STATE_PATH = DATA_DIR / "state.json"
 TRADES_PATH = DATA_DIR / "trades.csv"
 RUNS_PATH = DATA_DIR / "runs.jsonl"
-RESEARCH_PATH = DATA_DIR / "research.json"
 IST = ZoneInfo("Asia/Kolkata")
 TRADE_FIELDS = ["date", "signal_date", "side", "symbol", "quantity", "price", "gross_value", "costs", "reason", "cash_after"]
 
@@ -107,6 +105,8 @@ def _equity_prices(bars: dict[str, list[dict[str, Any]]], field: str, date: str)
 
 
 def run_once() -> int:
+    from .model_select import current_strategy
+    selected_strategy = current_strategy()
     now = datetime.now(IST)
     today = now.date().isoformat()
     print(f"India Paper Trader run started at {now.isoformat(timespec='seconds')}")
@@ -193,7 +193,7 @@ def run_once() -> int:
             targets: list[str] = []
             decision = "risk_lock_exit_to_cash"
         else:
-            targets = select_targets(current_bars, ACTIVE_STRATEGY, benchmark_bars=benchmark
+            targets = select_targets(current_bars, selected_strategy, benchmark_bars=benchmark)
             decision = "signal_created"
         state["pending_target"] = {"signal_date": latest_market_date, "target_symbols": targets}
         state["last_signal_date"] = latest_market_date
@@ -201,15 +201,9 @@ def run_once() -> int:
         targets = list((state.get("pending_target") or {}).get("target_symbols", []))
         decision = "already_processed_this_session"
 
-    # Research is informational only: it cannot modify the active strategy or portfolio targets.
-    research_status = "not_run"
-    try:
-        report = build_research_report(bars)
-        _atomic_json(RESEARCH_PATH, report)
-        research_status = "updated"
-    except Exception as exc:
-        research_status = f"error:{type(exc).__name__}"
-        print(f"Research warning: {research_status}")
+    # Heavy historical and LightGBM research runs in research.yml, never in the daily trader.
+    # Do not overwrite the research report with a rule-only or partial report here.
+    research_status = "separate_research_workflow"
 
     _atomic_json(STATE_PATH, state)
     record = {
@@ -218,7 +212,7 @@ def run_once() -> int:
         "market_date": latest_market_date,
         "data_source": "Yahoo Finance via yfinance (unofficial; research/paper simulation only)",
         "symbols_with_current_bars": len(current_bars),
-        "active_strategy": ACTIVE_STRATEGY,
+        "active_strategy": selected_strategy,
         "decision": decision,
         "target_symbols_for_next_session": targets,
         "trades_filled_this_run": len(completed_trades),

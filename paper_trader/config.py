@@ -13,7 +13,7 @@ MIN_RESEARCH_SYMBOLS_WITH_260_BARS = 45  # Report this for transparency.
 MIN_RESEARCH_SYMBOLS_WITH_300_BARS = 45  # The 12-1 candidate needs about 274 bars plus margin.
 MIN_RESEARCH_BENCHMARK_BARS = 1000  # Keep about 3 years for evaluation plus a trend warm-up.
 HISTORY_PERIOD = "5y"
-ACTIVE_STRATEGY = "trend_momentum_126"
+ACTIVE_STRATEGY = "nifty_regime_momentum_126"
 STRATEGIES = {
     "trend_momentum_126": {"trend_window": 200, "momentum_window": 126, "filter": "trend"},
     "medium_momentum_63": {"trend_window": 100, "momentum_window": 63, "filter": "trend"},

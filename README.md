@@ -4,6 +4,49 @@ A free-first, scheduled **paper-trading experiment** for Indian equities. The fi
 
 **Paper trading only.** There is no broker integration, no real-money order code, no leverage, and no broker credentials. Do not add broker secrets to this repository.
 
+## Browser-only GitHub deployment (no localhost required)
+
+All cloud workflows are in this repository. To enable the automated schedules,
+merge the `feature/open-source-quant-models` branch into the repository's **default
+branch (`main`)** using its pull request. GitHub Actions cron triggers run from
+the default branch only, and may be delayed or skipped.
+
+1. Open **Settings → Actions → General** and allow GitHub Actions to run. Under
+   Workflow permissions choose **Read and write permissions** so virtual
+   portfolio state can be committed back to the repository.
+2. Open **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+   If Pages is unavailable on your repository plan/visibility, hosting the
+   dashboard there is not possible until your GitHub Pages eligibility changes.
+3. Open **Actions → Crypto Paper Trader (Cloud) → Run workflow** and choose
+   `start_btc_now` (or wait for the next scheduled hourly run). The first
+   run explicitly starts a **5% / $50 virtual BTC** position using the latest
+   confirmed hourly market close, if a data provider is reachable. It cannot
+   place a real crypto order. If a crypto portfolio already exists, use
+   `paper_once` instead. Hourly runs automatically bootstrap once if no
+   crypto state exists.
+4. Open **Actions → Publish Paper Dashboards (GitHub Pages)** to verify
+   deployment. The expected URL, *only after successful deployment*, is
+   `https://luckyy1711.github.io/india-paper-trader/dashboard/`.
+   The sidebar links to both stock and crypto terminals.
+
+The existing **India Paper Trader** workflow continues to run on weekday
+sessions and now saves `data/paper_chart.json` for the stock terminal.
+The crypto workflow runs hourly at approximately minute 13 UTC and saves
+`data/crypto_state.json`, `data/crypto_trades.csv`, and
+`data/crypto_chart.json`. A commit triggers a Pages refresh. GitHub Actions
+is **not** a real-time server: schedules, market feeds, and deployment can be
+delayed or fail. Both trading engines remain paper-only. The crypto model
+uses Binance BTC/USDT or ETH/USDT as an approximate USD quote when available,
+otherwise public Coinbase USD or Yahoo USD candles. The USD/USDT peg is not
+guaranteed.
+
+**Privacy:** The published Pages site is generally accessible publicly, even
+if the source repository is private. It includes portfolio snapshots and
+simulated trade history; never include passwords, API keys, personal details,
+or other secrets in published files. Review GitHub Actions and Pages billing
+and visibility before enabling. Do not publish private portfolio data without
+understanding this tradeoff.
+
 ## What it does
 
 - Starts with ₹10,000 in virtual cash.
@@ -13,7 +56,7 @@ A free-first, scheduled **paper-trading experiment** for Indian equities. The fi
 - Caps intended position sizing at 25% of equity per stock and total equity exposure at 75%.
 - Locks new buys and queues an exit-to-cash target after a 10% peak-to-trough drawdown. The lock remains set for safety; resetting it should require an explicit review.
 - Avoids duplicate daily signals, keeps pending orders in state, rejects missing/stale current-session data, and refuses to value a holding without a price.
-- Compares three candidate strategies on a recent walk-forward historical sample in `data/research.json`. Research never changes the active strategy. A candidate must be evaluated in a separate paper-trading trial before any promotion.
+- Compares six fixed rule-based strategies plus a separate open-source LightGBM alpha model in `data/research.json`. Research never changes the active strategy. A candidate must be evaluated in a separate paper-trading trial before any promotion.
 - Saves portfolio state, trade history, and run logs in `data/` using Git commits so they survive ephemeral GitHub Actions runners.
 
 ## Schedule
@@ -43,7 +86,13 @@ The active strategy remains `trend_momentum_126` until a candidate survives sepa
 - **Nifty regime filter**, which only considers stock entries when the Nifty 50 closes above its 200-day average.
 - The existing moving-average crossover candidate.
 
-The report evaluates up to 756 recent sessions (roughly three years), compares results with Nifty 50 buy-and-hold, records calendar-year sub-periods from one continuous simulation, and includes configured costs/slippage. Each strategy is also checked over 252-, 504-, and 756-session windows and under 1.5x/2.0x cost-and-slippage stress. In addition, it runs four consecutive 126-session chronological test folds; the fixed strategy is not re-tuned between folds. Fold portfolios restart independently, so fold results are not one compounded equity curve. These checks help expose fragility but do not prove profitability. The period/cost sensitivity windows overlap; the separate walk-forward fold return intervals do not. A large grid of parameter tests is not a substitute for out-of-sample evidence: [research on backtest overfitting](https://escholarship.org/uc/item/4w1110bb) explains why the best historical variant can be a statistical mirage. The active strategy is not changed automatically. A candidate must also survive longer live-data paper trading and manual review before any promotion.
+The rule-based report evaluates up to 756 recent sessions (roughly three years), compares results with Nifty 50 buy-and-hold, records calendar-year sub-periods from one continuous simulation, and includes configured costs/slippage. Each strategy is also checked over 252-, 504-, and 756-session windows and under 1.5x/2.0x cost-and-slippage stress. In addition, it runs four consecutive 126-session chronological test folds; the fixed strategy is not re-tuned between folds. Fold portfolios restart independently, so fold results are not one compounded equity curve. These checks help expose fragility but do not prove profitability. The period/cost sensitivity windows overlap; the separate walk-forward fold return intervals do not. A large grid of parameter tests is not a substitute for out-of-sample evidence: [research on backtest overfitting](https://escholarship.org/uc/item/4w1110bb) explains why the best historical variant can be a statistical mirage. The active strategy is not changed automatically. A candidate must also survive longer live-data paper trading and manual review before any promotion.
+
+### Open-source ML research candidate
+
+The strategy lab also evaluates a separate LightGBM gradient-boosted-tree regressor inspired by the open-source quantitative-research workflow in [Microsoft Qlib](https://github.com/microsoft/qlib) and the rolling feature/retraining approach documented by [FreqAI](https://www.freqtrade.io/en/stable/freqai/). It is not the Qlib or Freqtrade engine, and it does not contain a wholesale copy of either bot. It uses the upstream [LightGBM library](https://github.com/lightgbm-org/LightGBM) (MIT license) directly, keeping the runtime lighter than installing Qlib or a full crypto trading stack.
+
+The model predicts each stock's next 21-session return relative to Nifty 50 from rolling price and optional OHLCV features. Signals are ranked monthly, model training is refreshed roughly quarterly, and training labels are purged until the full 21-session outcome has ended before each signal date. A 200-session Nifty regime filter and next-session-open fills are used. Transaction-cost/slippage sensitivity is checked at 1.0x, 1.5x, and 2.0x. It remains research-only and cannot change the active rule. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The dashboard also compares two drawdown recovery policies for the current active strategy: the existing permanent 10% lock and a **research-only** overlay that stays in cash until Nifty closes below its 200-session average after the lock and later closes back above it, with at least one eligible stock with a valid next-open fill. On re-entry, the research simulation resets its drawdown reference peak to the re-entry equity. This is a controlled experiment only: it does not change the scheduled paper trader, does not clear its existing lock, and does not automatically promote a strategy or authorize real-money trading.
 
@@ -58,6 +107,8 @@ GitHub Actions is a scheduler, not a 24/7 server. Runs can be delayed, fail, or 
 - `paper_trader/core.py` — deterministic strategy, portfolio sizing, fills, valuation, and risk lock
 - `paper_trader/market_data.py` — Yahoo Finance data adapter
 - `paper_trader/research.py` — historical strategy comparison (informational only)
+- `paper_trader/ml_research.py` — expanding-window LightGBM research model with purged labels
+- `THIRD_PARTY_NOTICES.md` — open-source references and licence notes
 - `paper_trader/main.py` — one scheduled run
 - `tests/` — offline unit tests
 - `data/state.json` — virtual cash, holdings, pending targets, and risk lock
@@ -77,6 +128,15 @@ python -m unittest discover -s tests -v
 A dark, responsive dashboard with strategy-return graphs, a TradingView Nifty chart, portfolio metrics, research coverage warnings, and the trade ledger is in `dashboard/`. From the repository root, run `python -m http.server 8000`, then open `http://localhost:8000/dashboard/`. It refreshes saved data every 60 seconds. See `dashboard/README.md`. This is read-only and requires internet access for chart libraries. Keep the repository private: the dashboard reads the private simulation data and should not be published to a public host without deliberately reviewing what would be exposed.
 
 To inspect the automated run, open the repository's **Actions** tab.
+
+## On-demand controls and historical simulator
+
+The **Run & Simulate** dashboard tab links to two authenticated GitHub Actions workflows:
+
+- **India Paper Trader**: use `workflow_dispatch` with `paper_once` to request one simulated session, or `validate_only` to run tests without changing portfolio state. The existing weekday schedule remains enabled. The engine is paper-only and refuses to process a session when current data is missing or stale.
+- **Historical Market Simulator**: choose a rule strategy or `lightgbm_relative_alpha`, starting virtual capital, evaluation window (252/504/756/1008 sessions), and cost/slippage multiplier (1x/1.5x/2x). It fetches historical bars, applies a coverage gate, replays the selected strategy chronologically, and saves `data/simulation.json`. The LightGBM option retrains at historical points and excludes labels until their full 21-session outcome has matured.
+
+The historical simulator is isolated from `data/state.json` and `data/trades.csv`; it cannot change the active strategy or execute broker orders. When the workflow finishes, refresh the dashboard to read the saved result. The dashboard does not contain a GitHub token: controls open the GitHub Actions page, where you must be signed in and explicitly click **Run workflow**. Research results are historical estimates, not forecasts or guarantees.
 
 ## Future mini-PC migration
 

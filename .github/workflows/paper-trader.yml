@@ -6,6 +6,15 @@ on:
     # checked from the presence of today's benchmark candle; no candle means skip.
     - cron: "45 11 * * 1-5"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run one simulated paper-trading session or validate without trading"
+        required: true
+        type: choice
+        default: paper_once
+        options:
+          - paper_once
+          - validate_only
 
 permissions:
   contents: write
@@ -36,14 +45,26 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Run one paper-trading session
+        if: github.event_name == 'schedule' || inputs.mode == 'paper_once'
         run: python -m paper_trader.main
+      - name: Refresh stock terminal snapshot
+        if: success() && (github.event_name == 'schedule' || inputs.mode == 'paper_once')
+        # The portfolio remains authoritative even if the chart provider is temporarily unavailable.
+        continue-on-error: true
+        run: python -m paper_trader.paper_chart
 
-      - name: Save state and logs to the private repository
+      - name: Skip portfolio changes in validate-only mode
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate_only'
+        run: echo "Validation-only run requested; no market data download or portfolio changes were made."
+
+      - name: Save virtual portfolio and run logs to the private repository
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/state.json data/trades.csv data/runs.jsonl data/research.json
+          for file in data/state.json data/trades.csv data/runs.jsonl data/paper_chart.json; do
+            if [ -f "$file" ]; then git add -- "$file"; fi
+          done
           if ! git diff --cached --quiet; then
             git commit -m "Update paper trading records"
             git push
