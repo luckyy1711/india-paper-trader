@@ -71,3 +71,48 @@ python -m paper_trader.crypto_minute --loop
 ```
 
 The runner and the chart server are separate terminals; the browser only observes what the runner has saved.
+
+
+## Fresh $1,000 crypto paper-account reset + chart terminal
+
+The latest BTC/ETH terminal uses the **official open-source TradingView Lightweight Charts™ v5.2.1** (Apache 2.0); it does **not** use TradingView's proprietary Advanced Charts website code. The chart loads the library from a public JS CDN, so the browser must have internet access. No package install, Node.js or build process is needed on this low-memory laptop.
+
+The chart adds mouse-wheel/pinch **zoom**, click-drag panning, a visible crosshair with OHLC in IST, interactive price and time scales, candlestick/line/area views, EMA20/50 overlays, optional RSI(14) lower pane, real exchange **base-asset** volume when available, interval aggregation (1, 3, 5, 15, 30, 60 minutes), virtual BUY/SELL event markers, 2-point trend lines, horizontal price lines, 30m/1h/2h/all visible ranges, live follow, fit, dark/light, PNG screenshot and fullscreen. A chart interval selection **does not change the bot's trading clock**, which remains completed 1-minute candles. Displayed intervals beyond 1m derive only from the 180 real minute candles fetched by the feed; they are not an expanded provider history. Exchange preview candles may be forming and Binance USDT is only a proxy for USD. Saved paper fills come from the bot's own CSV and are real recorded simulated executions, not forecasts.
+
+**Reset the local virtual paper account only if you want to discard the current active performance:**
+
+1. In the running BTC/ETH bot terminal, press `Ctrl+C` to stop the **minute bot**. Check for other bot processes and stop those first. Keep the stock trading process separate and unchanged. The reset refuses to proceed if a minute trader is holding its lock.
+2. Pull the updated files listed below. Run the offline crypto tests. Do not reset the account if tests fail.
+3. Explicitly reset under the existing virtual-bot file lock:
+
+```bash
+python -m paper_trader.crypto_minute --reset-paper-account --confirm-reset
+```
+
+This archives the pre-reset `crypto_state.json`, `crypto_trades.csv`, and `crypto_chart.json` under a timestamped `data/crypto_reset_backups/` directory (local, ignored by Git); it clears all old active paper fills/positions/pending orders, resets USD cash and peak equity to **$1,000**, sets minute mode, and writes a **$0 P&L** dashboard snapshot immediately. Resetting does **not** change any stock portfolio files, fetch exchange data, or execute live orders. Backups are retained locally so you can inspect the previous experiment.
+
+Then launch `python -m paper_trader.crypto_minute --loop` again. Restart the separate chart server with `python -m paper_trader.intraday_feed --port 8081` to load the new volume parser, and refresh `http://127.0.0.1:8081/dashboard/crypto.html` with Ctrl+Shift+R. The public market candlestick chart still displays genuine market history after an account reset, but all your **old virtual trade markers and P&L** disappear from the active account.
+
+Because the account lives on your **laptop**, merging these GitHub commits does not itself reset your laptop or restart your locally running Python processes.
+
+### Updating only the relevant files
+
+```bash
+cd ~/india-paper-trader
+git fetch origin feature/open-source-quant-models
+git restore --source=FETCH_HEAD -- \
+  .gitignore \
+  paper_trader/crypto_minute.py \
+  paper_trader/crypto_preview.py \
+  dashboard/crypto.html \
+  dashboard/crypto-chart.js \
+  tests/test_crypto_minute.py \
+  tests/test_crypto_preview.py \
+  tests/test_crypto_chart_ui.py
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_crypto_*.py' -v
+```
+
+If you still have not pulled the earlier accounting upgrade, also restore `paper_trader/crypto_metrics.py`, `paper_trader/crypto_paper.py` and `tests/test_crypto_metrics.py` from that same branch.
+
+The TradingView website's proprietary code, Pine Script, multi-chart platform, built-in order routing, and other restricted capabilities are **not** present. The graph offers an inspired layout using an authorized open-source core.
