@@ -14,6 +14,8 @@ import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .crypto_metrics import crypto_performance
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 STATE = DATA / "crypto_state.json"
@@ -258,13 +260,18 @@ def trade_history():
 
 
 def export_chart(state, bars, decisions, sources=None):
+    # Performance is derived from the saved virtual cash, the complete fill
+    # journal and the same CONFIRMED candles used for this paper account.
+    history = trade_history()
+    performance = crypto_performance(state, bars, history)
     save_json(CHART, {
         "mode": "crypto_paper_only", "currency": "USD", "model": state["model"],
         "candle_interval": state.get("bar_interval", "1h"),
         "updated_utc": datetime.now(timezone.utc).isoformat(),
         "state": state, "signals": decisions, "market_sources": sources or {},
+        "performance": performance,
         "candles": {s: rows[-160:] for s, rows in bars.items()},
-        "trades": trade_history(),
+        "trades": history,
         "notes": "Only completed " + state.get("bar_interval", "1h") + " paper candles; simulated next-bar closes. No exchange orders.",
     })
 
