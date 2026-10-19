@@ -260,16 +260,19 @@ def trade_history():
 def export_chart(state, bars, decisions, sources=None):
     save_json(CHART, {
         "mode": "crypto_paper_only", "currency": "USD", "model": state["model"],
+        "candle_interval": state.get("bar_interval", "1h"),
         "updated_utc": datetime.now(timezone.utc).isoformat(),
         "state": state, "signals": decisions, "market_sources": sources or {},
         "candles": {s: rows[-160:] for s, rows in bars.items()},
         "trades": trade_history(),
-        "notes": "Confirmed hourly candles, delayed Yahoo data; no broker/exchange orders.",
+        "notes": "Only completed " + state.get("bar_interval", "1h") + " paper candles; simulated next-bar closes. No exchange orders.",
     })
 
 
 def run_once():
     state = load_state()
+    if state.get("bar_interval", "1h") == "1m":
+        raise RuntimeError("This portfolio is now minute-mode. Stop the old hourly runner; use python -m paper_trader.crypto_minute --loop.")
     bars, sources = download()  # No portfolio changes if either market is unavailable.
     times = {s: rows[-1]["time"] for s, rows in bars.items()}
     if len(set(times.values())) != 1:
@@ -372,6 +375,8 @@ def main():
         return
     if args.set_model:
         state = load_state()
+        if state.get("bar_interval") == "1m" and args.set_model != "ema_rsi":
+            parser.error("Minute paper portfolio supports EMA/RSI only; do not switch to the legacy hourly momentum model.")
         if state["risk_locked"]:
             parser.error("Risk lock active; refusing strategy switch")
         if state.get("pending") and not args.cancel_pending:
