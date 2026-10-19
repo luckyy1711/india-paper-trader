@@ -36,8 +36,7 @@ def build_snapshot(bars, state, trades):
             model_signals[name] = {"targets": targets, "status": "ok"}
         except (ValueError, KeyError, TypeError) as exc:
             model_signals[name] = {"targets": [], "status": "error", "reason": str(exc)[:120]}
-    return {
-        "active_strategy": current_strategy(),
+    # Include all current strategy candidates so switching previews can inspect their charts.\n    symbols = sorted(set(symbols) | {s for v in model_signals.values() for s in v.get("targets", []) if s in bars})\n    return {\n        "active_strategy": current_strategy(),
         "model_signals": model_signals,
         "mode": "actual_paper_portfolio_read_only",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
