@@ -105,6 +105,8 @@ def _equity_prices(bars: dict[str, list[dict[str, Any]]], field: str, date: str)
 
 
 def run_once() -> int:
+    from .model_select import current_strategy
+    selected_strategy = current_strategy()
     now = datetime.now(IST)
     today = now.date().isoformat()
     print(f"India Paper Trader run started at {now.isoformat(timespec='seconds')}")
@@ -191,7 +193,7 @@ def run_once() -> int:
             targets: list[str] = []
             decision = "risk_lock_exit_to_cash"
         else:
-            targets = select_targets(current_bars, ACTIVE_STRATEGY, benchmark_bars=benchmark)
+            targets = select_targets(current_bars, selected_strategy, benchmark_bars=benchmark)
             decision = "signal_created"
         state["pending_target"] = {"signal_date": latest_market_date, "target_symbols": targets}
         state["last_signal_date"] = latest_market_date
@@ -210,7 +212,7 @@ def run_once() -> int:
         "market_date": latest_market_date,
         "data_source": "Yahoo Finance via yfinance (unofficial; research/paper simulation only)",
         "symbols_with_current_bars": len(current_bars),
-        "active_strategy": ACTIVE_STRATEGY,
+        "active_strategy": selected_strategy,
         "decision": decision,
         "target_symbols_for_next_session": targets,
         "trades_filled_this_run": len(completed_trades),
