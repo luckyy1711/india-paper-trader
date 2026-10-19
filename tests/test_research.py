@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 
-from paper_trader.config import MIN_RESEARCH_BENCHMARK_BARS, STRATEGIES
+from paper_trader.config import ACTIVE_STRATEGY, MIN_RESEARCH_BENCHMARK_BARS, STRATEGIES
 from unittest.mock import patch
 
 from paper_trader.research import (
@@ -86,7 +86,7 @@ class ResearchQualityGateTests(unittest.TestCase):
             self.assertEqual(result["walk_forward"]["status"], "ok")
             self.assertEqual(result["walk_forward"]["completed_folds"], 4)
             self.assertEqual(len(result["walk_forward"]["folds"]), 4)
-        self.assertEqual(report["active_strategy"], "trend_momentum_126")
+        self.assertEqual(report["active_strategy"], ACTIVE_STRATEGY)
         self.assertFalse(report["active_strategy_changes_automatically"])
         comparison = report["risk_recovery_comparison"]
         self.assertEqual(comparison["status"], "ok")
