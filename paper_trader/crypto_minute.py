@@ -21,7 +21,7 @@ from .crypto_preview import SYMBOLS, download_crypto_minute
 INTERVAL = "1m"
 MIN_HISTORY = 60
 LOOP_SECONDS = 15
-MAX_CANDLE_AGE = timedelta(seconds=180)
+MAX_CANDLE_AGE = timedelta(seconds=140)
 
 
 @contextlib.contextmanager
