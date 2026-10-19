@@ -1,0 +1,10 @@
+[Unit]
+Description=Run NEON crypto paper bot hourly at 8 minutes past the hour
+
+[Timer]
+OnCalendar=*-*-* *:08:00
+Persistent=true
+Unit=crypto-paper.service
+
+[Install]
+WantedBy=timers.target
