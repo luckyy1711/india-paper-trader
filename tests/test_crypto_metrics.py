@@ -1,6 +1,12 @@
 """Offline money-math regressions for saved virtual BTC/ETH trade ledgers."""
+import json
 import math
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from paper_trader import crypto_paper as account
 
 from paper_trader.crypto_metrics import crypto_performance
 
@@ -129,6 +135,47 @@ class CryptoPerformanceTests(unittest.TestCase):
         p = crypto_performance(state, market(), [])
         self.assertEqual(p["last_processed_action"], "HOLD")
         self.assertIsNone(p["last_recorded_trade"])
+
+    def test_export_chart_includes_virtual_performance_without_new_trades(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            with patch.object(account, "CHART", root / "crypto_chart.json"), \
+                 patch.object(account, "TRADES", root / "crypto_trades.csv"):
+                account.append_trades([{
+                    "time": "2026-10-19T13:00:00+00:00",
+                    "side": "BUY", "symbol": "BTC-USD",
+                    "quantity": 1, "price": 100, "fees": 1,
+                    "reason": "Test virtual fill",
+                }])
+                state = virtual_state(899, 1)
+                state["last_fills"] = []
+                rows = market(110)
+                rows["ETH-USD"] = [{
+                    "time": "2026-10-19T14:00:00+00:00",
+                    "close": 60, "open": 59, "high": 61, "low": 58,
+                }]
+                decisions = {"BTC-USD": {"buy": False}, "ETH-USD": {"buy": False}}
+                account.export_chart(state, rows, decisions, {"BTC-USD": "test"})
+                saved = json.loads(account.CHART.read_text())
+        p = saved["performance"]
+        self.assertEqual(p["currency"], "USD")
+        self.assertEqual(p["initial_capital_usd"], 1000)
+        self.assertEqual(p["available_cash_usd"], 899)
+        self.assertEqual(p["holdings_market_value_usd"], 110)
+        self.assertAlmostEqual(p["net_pnl_usd"], 9)
+        self.assertAlmostEqual(p["unrealized_pnl_usd"], 9)
+        self.assertEqual(p["last_recorded_trade"]["side"], "BUY")
+        self.assertEqual(saved["trades"][0]["symbol"], "BTC-USD")
+        self.assertEqual(saved["candle_interval"], "1m")
+
+    def test_fifo_never_claims_profit_from_unbalanced_journal(self):
+        # A simulated SELL without the historic acquisition cannot have a
+        # trustworthy per-trade cost basis, even if the virtual account has cash.
+        rows = [fill("SELL", 1, 120, 1)]
+        result = crypto_performance(virtual_state(1119), {}, rows)
+        self.assertFalse(result["fifo_reconciled"])
+        self.assertAlmostEqual(result["net_pnl_usd"], 119)
+        self.assertIsNone(result["last_recorded_trade"]["realized_pnl_usd"])
 
 
 if __name__ == "__main__":
