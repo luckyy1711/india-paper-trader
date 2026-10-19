@@ -29,3 +29,13 @@ The page reads the latest `data/research.json` and displays data-coverage warnin
 ## Local cached minute chart
 
 Run `python -m paper_trader.paper_chart`, then `python -m paper_trader.intraday_feed --port 8080` from the repository root and open `http://127.0.0.1:8080/dashboard/paper.html`. The 1-minute tab reads a localhost-only endpoint once per second, backed by at most one unofficial Yahoo fetch per symbol per minute. Candles and displayed timestamps are never fabricated. Yahoo data can be delayed/unavailable; the feed is **not** true NSE real time. Daily paper signal generation and next-open fills are unchanged. The static host can show only stored daily candles.
+
+## BTC/ETH moving chart
+
+The crypto page `/dashboard/crypto.html` can now load actual 1-minute Binance USDT (Coinbase USD fallback) market candles from the localhost-only preview server:
+
+```bash
+python -m paper_trader.intraday_feed --port 8080
+```
+
+Open `http://127.0.0.1:8080/dashboard/crypto.html`; select **1m public market preview** or **1h saved paper candles**. Client polling is once per second; upstream is at most once per 10 seconds per symbol, never a guaranteed real-time exchange subscription. Stale/failed data is labeled and previous actual candles can be shown without fabricating updates. The paper-trading bot remains an independent hourly process; virtual cash and fill history refresh from its saved snapshot every 15 seconds and are not modified by this chart.
