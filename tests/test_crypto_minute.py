@@ -179,6 +179,68 @@ class MinutePaperTests(unittest.TestCase):
                 account.run_once()
             fetch.assert_not_called()
 
+    def test_explicit_reset_archives_old_trades_without_touching_equities(self):
+        state = account.fresh_state()
+        state.update({
+            "bar_interval": "1m", "cash": 494.83,
+            "positions": {"BTC-USD": .002997, "ETH-USD": .102186},
+            "last_bar": "2026-10-19T14:00:00+00:00",
+        })
+        account.save_json(account.STATE, state)
+        account.append_trades([{
+            "time": "2026-10-19T14:00:00+00:00", "side": "BUY",
+            "symbol": "BTC-USD", "quantity": .002997, "price": 83000,
+            "fees": .49, "reason": "old history",
+        }])
+        account.save_json(account.CHART, {"mode": "crypto_paper_only", "stale": True})
+        stock_file = self.root / "stock_state.json"
+        stock_file.write_text("preserve stock portfolio", encoding="utf-8")
+
+        with bot.paper_lock():
+            result = bot.reset_virtual_portfolio()
+        self.assertEqual(result["status"], "reset")
+        self.assertEqual(result["virtual_starting_cash_usd"], 1000)
+        archive = Path(result["old_data_archive"])
+        self.assertAlmostEqual(json.loads((archive / "crypto_state.json").read_text())["cash"], 494.83)
+        self.assertEqual(len(list(csv.DictReader((archive / "crypto_trades.csv").open()))), 1)
+        self.assertTrue(json.loads((archive / "crypto_chart.json").read_text())["stale"])
+        self.assertEqual(stock_file.read_text(), "preserve stock portfolio")
+
+        after = account.load_state()
+        self.assertEqual(after["bar_interval"], "1m")
+        self.assertEqual(after["cash"], 1000)
+        self.assertEqual(after["peak_equity"], 1000)
+        self.assertEqual(after["positions"], {})
+        self.assertIsNone(after["pending"])
+        self.assertIsNone(after["last_bar"])
+        self.assertEqual(account.trade_history(), [])
+        snap = json.loads(account.CHART.read_text())
+        self.assertEqual(snap["performance"]["net_pnl_usd"], 0)
+        self.assertEqual(snap["performance"]["portfolio_equity_usd"], 1000)
+        self.assertEqual(snap["trades"], [])
+        self.assertEqual(snap["candles"], {})
+
+    def test_reset_refuses_parallel_runner_and_preserves_state(self):
+        state = account.fresh_state()
+        state["bar_interval"] = "1m"
+        state["cash"] = 800
+        account.save_json(account.STATE, state)
+        with bot.paper_lock():
+            with self.assertRaisesRegex(RuntimeError, "portfolio lock"):
+                with bot.paper_lock():
+                    bot.reset_virtual_portfolio()
+        self.assertEqual(account.load_state()["cash"], 800)
+        self.assertEqual(list(self.root.glob("crypto_reset_backups/*")), [])
+
+    def test_reset_can_repeat_and_archives_previous_reset(self):
+        with bot.paper_lock():
+            first = bot.reset_virtual_portfolio()
+        with bot.paper_lock():
+            second = bot.reset_virtual_portfolio()
+        self.assertNotEqual(first["old_data_archive"], second["old_data_archive"])
+        self.assertTrue((Path(second["old_data_archive"]) / "crypto_state.json").exists())
+        self.assertEqual(account.load_state()["cash"], 1000)
+
     def test_minute_runner_lock_cannot_be_held_twice(self):
         with bot.paper_lock():
             with self.assertRaisesRegex(RuntimeError, "portfolio lock"):
