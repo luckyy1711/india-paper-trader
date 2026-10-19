@@ -51,7 +51,13 @@ jobs:
 
       - name: Process next confirmed hourly candle
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper_once')
-        run: python -m paper_trader.crypto_paper
+        run: |
+          if [ ! -f data/crypto_state.json ]; then
+            echo "No crypto paper portfolio exists; creating requested initial 5% virtual BTC position."
+            python -m paper_trader.crypto_paper --start-now
+          else
+            python -m paper_trader.crypto_paper
+          fi
 
       - name: Validation only
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate_only'
