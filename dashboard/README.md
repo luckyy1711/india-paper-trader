@@ -47,3 +47,27 @@ Unlike the preview-only 1-minute market graph, `paper_trader.crypto_minute --loo
 The crypto screen's **Saved paper fills** timeframe adapts to 1 minute once the engine writes its first minute snapshot. Recorded virtual BUY/SELL markers appear on matching saved/preview minute candles, and the fill table updates every 15 seconds from the independent runner's saved file. This page does not submit trading orders, control the runner or claim that its public minute preview is an execution-grade feed.
 
 Open `http://127.0.0.1:8081/dashboard/crypto.html` when the preview server is on port 8081. `python -m paper_trader.crypto_minute --status` displays the portfolio. A laptop in sleep or power-off cannot run minute trades.
+
+## Crypto trading-performance account (paper money)
+
+The BTC/ETH dashboard now provides a virtual account ledger above the chart:
+
+- **Starting virtual money** from `state.initial_cash` (normally $1,000), remaining cash, market value currently invested, cost of the still-open positions, and total marked-to-market account equity.
+- **Total net profit/loss** = saved cash + latest **completed bot candle** value of open positions − original virtual capital; it includes exchange-simulation slippage, fees and unrealized gains/losses, not merely wins on closed trades. This assumes there are no deposits or withdrawals (the current paper engine has neither).
+- **Realized profit/loss** on completed virtual sells from FIFO journal matching (buy cost + buy fee, net sale proceeds − sale fee). Unrealized profit is the current invested market value less the remaining FIFO buy cost. If fill records are incomplete or cannot reconcile with holdings/cash, the realized/unrealized split is explicitly **unavailable** rather than guessed; overall cash/equity P&L is still shown.
+- **Lifetime investment** is the cumulative net cash spent on BUYs (including purchase fees). It is not the same thing as the cost of positions held today or their latest market value. The dashboard also shows total cash received from SELLs, total recorded fees, and BUY/SELL counts.
+- A **last recorded virtual BUY/SELL** indicator (including size, virtual price, fee and net cash effect), separate **last processed bot candle** BUY/SELL/HOLD status, and a scrollable fill ledger with per-SELL realized profits when verified.
+- Profits and portfolio balances refresh on the dashboard every 15 seconds **after the minute runner writes a new paper snapshot**. The moving 1-minute price preview is separate and does not mark the balance to a forming/unconfirmed candle. All currency amounts are **USD virtual funds**, not real gains.
+
+After pulling the dashboard and trading-engine changes, restart the locally running minute bot so its exporter includes the new `performance` section in `data/crypto_chart.json`. The price preview server can continue running and serve the updated HTML immediately; a hard browser refresh may help. The new accounting module reads saved data only; it never changes positions or triggers an order.
+
+Use:
+
+```bash
+cd ~/india-paper-trader
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_crypto_*.py' -v
+python -m paper_trader.crypto_minute --loop
+```
+
+The runner and the chart server are separate terminals; the browser only observes what the runner has saved.
