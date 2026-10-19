@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "currency": "USD",
+  "initial_cash": 1000.0,
+  "cash": 950.0,
+  "positions": {
+    "BTC-USD": 0.000604803736818275
+  },
+  "entry_prices": {
+    "BTC-USD": 82506.43400999998
+  },
+  "peak_equity": 1000.0,
+  "risk_locked": false,
+  "last_bar": "2026-10-19T10:00:00+00:00",
+  "pending": {
+    "time": "2026-10-19T10:00:00+00:00",
+    "targets": [
+      "BTC-USD"
+    ]
+  },
+  "model": "ema_rsi"
+}

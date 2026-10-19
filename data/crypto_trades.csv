@@ -1,0 +1,2 @@
+time,side,symbol,quantity,price,fees,reason
+2026-10-19T10:00:00+00:00,BUY,BTC-USD,0.0006048,82506.434,0.0998,User-requested 5% virtual BTC bootstrap (not a model signal)
