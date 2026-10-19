@@ -141,3 +141,35 @@ The historical simulator is isolated from `data/state.json` and `data/trades.csv
 ## Future mini-PC migration
 
 The core engine is independent of GitHub Actions. A future Linux mini PC can run the same package from a persistent local folder with a system scheduler. Migrate the state and trade ledger together; do not start the cloud and mini-PC schedulers at the same time, or they could process the same signals twice.
+
+## Stock terminal: model switching, reasons, and comparisons
+
+The stock terminal is at `dashboard/paper.html`. It is a **read-only snapshot of actual daily OHLC and completed virtual fills**, not a live broker chart. The stock dropdown displays 6 rule-based strategies. Selecting one shows its candidates and their trend average, momentum, volatility-adjusted ranking score, and sample rejection reasons. Different rules can select the same stocks. Recorded BUY/SELL markers only appear when a virtual order actually fills; model candidates are not filled trades.
+
+Run from the project root with your virtual environment enabled:
+
+```bash
+python -m unittest discover -s tests -v
+python -m paper_trader.paper_chart
+python -m http.server 8080
+```
+
+Open `http://localhost:8080/dashboard/paper.html`. The exporter requires a saved paper portfolio and sufficiently current market history to calculate candidate signals. It **withholds** model selections when fewer than 45 Nifty 50 stock histories end on the benchmark's latest available date. The exporter does not advance the portfolio or place orders.
+
+To switch the model that will create *future* signals:
+
+```bash
+python -m paper_trader.model_select --set medium_momentum_63
+```
+
+If an unfilled pending target exists, the command refuses to change state. An explicit alternate command is:
+
+```bash
+python -m paper_trader.model_select --set medium_momentum_63 --cancel-pending
+```
+
+**Warning:** `--cancel-pending` discards existing *unfilled* target stocks when actually changing strategy; it never clears holdings, cash, recorded fills, risk lock, or the last processed session date. Switching to the currently active model is a no-op and does not cancel targets. The first new signal follows the next eligible trading session after the already-processed date, with any fill following a later open; there is no same-session backfill. A switch made on a locally running laptop does **not** automatically update a separately running GitHub checkout; the authoritative strategy is stored in `data/state.json` on each running environment. Do not operate two independent paper portfolio copies as though they were a single shared account.
+
+The model chosen for an existing saved portfolio and the last 100 model-switch audit events live **atomically in the portfolio's `data/state.json`**, which the stock cloud workflow already preserves. A pre-first-run choice can still live in the legacy `data/selected_strategy.json`. On Linux, the CLI and daily runner serialize modifications using a local file lock. Avoid editing state files by hand.
+
+The comparison table displays **previously computed research backtests** from `data/research.json` (about 252 and 756 sessions), not current paper-account performance. It shows the source dates and withholds results if the existing research quality gate failed. The exporter does not retrain models or rerun expensive backtests. Historical returns and drawdowns are affected by data limitations, survivor bias, transaction-cost assumptions and the permanent paper risk lock; they cannot establish future profitability. LightGBM remains research-only.
