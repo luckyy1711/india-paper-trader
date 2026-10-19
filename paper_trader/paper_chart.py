@@ -14,6 +14,7 @@ from typing import Any
 
 from .config import MIN_CURRENT_SYMBOL_COVERAGE, STRATEGIES
 from .core import score_symbol, select_targets
+from .indicators import confirmation_reason, indicator_snapshot
 from .main import STATE_PATH, TRADES_PATH, _atomic_json, _load_state
 from .market_data import BENCHMARK_KEY, download_market_data
 from .model_select import current_strategy
@@ -48,7 +49,11 @@ def _symbol_reason(rows: list[dict], strategy: str, score: float | None) -> dict
         values = [closes[j] / closes[j - period] - 1 for period in periods]
         momentum = sum(values) / len(values) * 100
 
-    reason = "Qualified: above trend average, positive momentum and usable volatility"
+    indicators = indicator_snapshot(rows) if params.get("indicator_confirmation") else None
+    rejected_by_indicators = confirmation_reason(indicators) if params.get("indicator_confirmation") else None
+    reason = ("Qualified: trend, momentum, EMA20>EMA50, RSI14, MACD and ATR14 confirmed"
+              if params.get("indicator_confirmation") else
+              "Qualified: above trend average, positive momentum and usable volatility")
     if score is None:
         if sma is None or momentum is None:
             reason = "Insufficient usable price history"
@@ -58,6 +63,8 @@ def _symbol_reason(rows: list[dict], strategy: str, score: float | None) -> dict
             reason = "50-session average is not above the 200-session average"
         elif momentum <= 0:
             reason = "Required momentum is not positive"
+        elif rejected_by_indicators:
+            reason = rejected_by_indicators
         else:
             reason = "Did not meet all momentum/volatility checks"
 
@@ -70,6 +77,8 @@ def _symbol_reason(rows: list[dict], strategy: str, score: float | None) -> dict
         "momentum_windows": periods,
         "skip_recent_sessions": skip,
         "reason": reason,
+        "indicators": ({key: round(value, 3) for key, value in indicators.items()}
+                       if indicators is not None else None),
     }
 
 
