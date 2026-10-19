@@ -1,20 +1,248 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="300"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEON · Crypto Paper</title><style>
-:root{color-scheme:dark;--bg:#080d15;--panel:#111c2a;--line:#2a4052;--green:#51e7b7;--red:#ff667f;--text:#e8f1fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui}main{max-width:1200px;margin:auto;padding:22px}h1{font-size:28px}p,small{color:#9aafc4}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}.stat{flex:1;min-width:120px}.stat strong{display:block;font-size:23px}select{padding:9px;background:#1a3040;color:white;border:1px solid #395367;border-radius:7px}canvas{width:100%;height:390px;display:block}.green{color:var(--green)}.red{color:var(--red)}table{width:100%;border-collapse:collapse}td,th{padding:9px;text-align:left;border-bottom:1px solid var(--line)}a{color:var(--green)}</style></head><body><main>
-<div class="row" style="justify-content:space-between"><div><small>NEON / SEPARATE CRYPTO PAPER PORTFOLIO</small><h1>Crypto · 24/7 Markets</h1></div><a href="paper.html">Stock terminal ↗</a></div>
-<div class="panel"><div class="row"><div class="stat"><small>Virtual USD cash</small><strong id="cash">—</strong></div><div class="stat"><small>Virtual equity</small><strong id="equity">—</strong></div><div class="stat"><small>Model</small><strong id="model">—</strong></div><div class="stat"><small>Risk lock</small><strong id="lock">—</strong></div></div><p id="status"></p></div>
-<div class="panel"><div class="row"><label>Market <select id="symbol"><option value="BTC-USD">Bitcoin · BTC/USD</option><option value="ETH-USD">Ethereum · ETH/USD</option></select></label><span id="price"></span></div><canvas id="chart"></canvas><p><b class="green">▲ BUY</b> means the bot bought virtual crypto. <b class="red">▼ SELL</b> means it sold. Green candles closed above their opening price; red candles closed below. The yellow line is the 20-hour EMA, showing the shorter trend. The blue line is the 50-hour EMA, showing the longer trend. These are not guaranteed predictions.</p><p id="signal"></p><p id="source" style="color:#9aafc4"></p></div>
-<div class="panel"><h3>Actual virtual fills</h3><div id="trades">—</div></div>
-<p id="message">Crypto is open 24/7, but this bot processes confirmed hourly candles only when run. Prices are delayed; no real exchange orders are sent.</p>
-</main><script>
-(async()=>{const $=id=>document.getElementById(id);let d;try{const r=await fetch('../data/crypto_chart.json?'+Date.now());if(!r.ok)throw Error('Missing snapshot');d=await r.json()}catch(e){$('message').textContent='Start a new crypto portfolio with python -m paper_trader.crypto_paper --start-now (or run normally), then refresh. '+e.message;return}
-const money=n=>'$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:2});const st=d.state||{};$('cash').textContent=money(st.cash);$('model').textContent=d.model;$('lock').textContent=st.risk_locked?'LOCKED':'OFF';$('status').textContent='Last processed hour: '+(st.last_bar||'none')+' · Next-hour targets: '+((st.pending||{}).targets||[]).join(', ');
-const all=d.candles||{},last={};Object.keys(all).forEach(s=>last[s]=Number(all[s].at(-1).close));$('equity').textContent=money(Number(st.cash||0)+Object.entries(st.positions||{}).reduce((a,[s,q])=>a+q*(last[s]||0),0));
-function setup(cv){const ratio=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*ratio;cv.height=h*ratio;const c=cv.getContext('2d');c.scale(ratio,ratio);return{c,w,h}}
-function draw(){const s=$('symbol').value,rows=(all[s]||[]).map(r=>({...r,open:+r.open,high:+r.high,low:+r.low,close:+r.close}));if(!rows.length)return;const {c,w,h}=setup($('chart')),lo=Math.min(...rows.map(r=>r.low)),hi=Math.max(...rows.map(r=>r.high)),span=Math.max(1,hi-lo),left=14,right=84,top=22,bottom=28,step=(w-left-right)/rows.length,y=v=>top+(hi-v)/span*(h-top-bottom);c.font='12px system-ui';for(let i=0;i<5;i++){const v=lo+i*span/4,yy=y(v);c.strokeStyle='#2a4052';c.beginPath();c.moveTo(left,yy);c.lineTo(w-right,yy);c.stroke();c.fillStyle='#9aafc4';c.fillText(v.toFixed(0),w-right+5,yy+4)}
-rows.forEach((r,i)=>{const x=left+(i+.5)*step;c.strokeStyle=c.fillStyle=r.close>=r.open?'#51e7b7':'#ff667f';c.beginPath();c.moveTo(x,y(r.high));c.lineTo(x,y(r.low));c.stroke();c.fillRect(x-Math.max(1,step*.32),y(Math.max(r.open,r.close)),Math.max(2,step*.64),Math.max(1,Math.abs(y(r.open)-y(r.close))))});
-for(const [period,color] of [[20,'#f3c66e'],[50,'#69a7ff']]){let e=null;c.beginPath();c.strokeStyle=color;c.lineWidth=2;rows.forEach((r,i)=>{e=e===null?r.close:e+(r.close-e)*2/(period+1);const x=left+(i+.5)*step;i?c.lineTo(x,y(e)):c.moveTo(x,y(e))});c.stroke()}
-for(const t of d.trades||[]){if(t.symbol!==s)continue;const i=rows.findIndex(r=>r.time===t.time);if(i<0)continue;const x=left+(i+.5)*step;c.fillStyle=t.side==='BUY'?'#51e7b7':'#ff667f';c.fillText(t.side==='BUY'?'▲ BUY':'▼ SELL',x-15,t.side==='BUY'?y(rows[i].low)+17:y(rows[i].high)-12)}
-$('price').textContent=money(rows.at(-1).close)+' · '+rows.at(-1).time;$('source').textContent='Market source: '+((d.market_sources||{})[s]||'unspecified')+' · USDT prices are approximately, not exactly, USD when using Binance.';$('signal').textContent='Latest signal: '+((d.signals||{})[s]?.buy?'QUALIFIES for a possible future paper buy':'No new buy signal')+' · '+((d.signals||{})[s]?.explanation||'');}
-$('symbol').onchange=draw;window.addEventListener('resize',draw);draw();const t=(d.trades||[]).slice(-40).reverse();$('trades').innerHTML=t.length?'<table><tr><th>Hour (UTC)</th><th>Action</th><th>Coin</th><th>Amount</th><th>Virtual fill price</th></tr>'+t.map(r=>'<tr><td>'+r.time+'</td><td class="'+(r.side==='BUY'?'green':'red')+'">'+r.side+'</td><td>'+r.symbol+'</td><td>'+Number(r.quantity).toFixed(6)+'</td><td>'+money(r.price)+'</td></tr>').join('')+'</table>':'No virtual trades yet. Signals need a subsequent confirmed hourly candle to be filled.';
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON · Crypto Paper Terminal</title>
+<style>
+:root{color-scheme:dark;--bg:#080d15;--panel:#101b29;--line:#294052;--green:#51e7b7;--red:#ff667f;--muted:#9aafc4}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#edf5ff;font:14px system-ui,-apple-system,sans-serif}
+main{max-width:1260px;margin:auto;padding:20px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px;margin:12px 0}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.heading{justify-content:space-between}
+h1{font-size:28px;margin:6px 0}h2{font-size:18px;margin:0 0 12px}a,.green{color:var(--green)}.red{color:var(--red)}
+p,small,.muted{color:var(--muted)}p{line-height:1.65}small{font-size:12px}
+select{border:1px solid #395367;border-radius:7px;background:#1a3040;color:#fff;padding:9px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:16px}
+.stat strong{display:block;font-size:23px;word-wrap:break-word;margin-top:5px}
+#price{font-size:23px;font-weight:700;color:var(--green)}#clock{font-variant-numeric:tabular-nums}
+#chart{display:block;width:100%;height:430px}
+.feed{border:1px solid #395367;border-radius:9px;background:#142232;padding:10px 12px;margin:12px 0;font-size:12px;line-height:1.6}
+.warning{color:#ffcf91}.ok{color:var(--green)}.bad{color:var(--red)}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}
+.tablewrap{overflow-x:auto}.small{font-size:12px}
+@media(max-width:650px){main{padding:12px}h1{font-size:22px}#chart{height:310px}#price{font-size:19px}}
+</style>
+</head>
+<body><main>
+<div class="row heading">
+ <div><small>NEON / CRYPTO PAPER PORTFOLIO · VISUAL MARKET PREVIEW</small><h1>BTC / ETH Terminal</h1></div>
+ <div class="row"><span class="muted" id="clock"></span><a href="paper.html">Stock terminal ↗</a></div>
+</div>
+<div class="panel">
+ <div class="stats">
+  <div class="stat"><small>Virtual USD cash</small><strong id="cash">—</strong></div>
+  <div class="stat"><small>Paper equity (last saved hourly prices)</small><strong id="equity">—</strong></div>
+  <div class="stat"><small>Paper holdings</small><strong id="holdings">—</strong></div>
+  <div class="stat"><small>Trading strategy</small><strong id="model">—</strong></div>
+  <div class="stat"><small>Risk lock</small><strong id="lock">—</strong></div>
+ </div>
+ <p class="small" id="portfolio-status">Loading saved paper-trading snapshot…</p>
+</div>
+<div class="panel">
+ <div class="row">
+  <label>Market <select id="symbol">
+   <option value="BTC-USD">Bitcoin · BTC/USD</option>
+   <option value="ETH-USD">Ethereum · ETH/USD</option>
+  </select></label>
+  <label>Timeframe <select id="timeframe">
+   <option value="1m">1m · public market preview</option>
+   <option value="1h">1h · saved paper candles</option>
+  </select></label>
+  <span id="price">—</span>
+ </div>
+ <div class="feed" id="feed-status" role="status">Connecting to localhost market preview…</div>
+ <canvas id="chart" aria-label="BTC and ETH actual market candlestick graph"></canvas>
+ <p class="small" id="source">Feed status will show candle time and last provider refresh.</p>
+ <p class="small">The screen checks for changes every second, but its public exchange source is queried at most every 10 seconds per coin. Prices can be delayed, unchanged or unavailable. The latest <b>forming</b> 1-minute candle can change before it closes; no candles are fabricated. Binance USDT prices are an approximate USD proxy; Coinbase USD candles are used if needed.</p>
+ <p class="small"><b class="green">▲ BUY</b> and <b class="red">▼ SELL</b> mark <b>recorded paper fills</b> on the saved 1-hour view. This 1-minute preview NEVER creates orders or trading signals. EMA20 and EMA50 are calculated on the displayed timeframe, not used to alter the hourly trading bot.</p>
+ <p class="small" id="signal">Hourly strategy decisions are loaded from the saved portfolio snapshot.</p>
+</div>
+<div class="panel">
+ <h2>Recorded virtual fills</h2>
+ <div class="tablewrap" id="trades">Loading trades…</div>
+</div>
+<p class="small" id="message">Paper-only. Your BTC bot processes confirmed hourly candles independently of this chart. The preview server cannot place exchange orders or change your portfolio.</p>
+</main>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const money=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+let snapshot=null, minute=null, minuteLoading=false, snapshotLoading=false;
+const symbolSelect=$('symbol'), timeframeSelect=$('timeframe');
+function formatTime(value){
+ if(!value)return 'unknown';
+ const time=new Date(value);
+ return Number.isFinite(time.valueOf())
+  ?time.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST'
+  :String(value);
+}
+function currentRows(){
+ const name=symbolSelect.value, useMinute=timeframeSelect.value==='1m';
+ if(useMinute && minute && minute.symbol===name && Array.isArray(minute.bars) && minute.bars.length &&
+    (minute.status==='ok'||minute.status==='stale')){
+  return {rows:minute.bars,interval:'1m',preview:true};
+ }
+ return {rows:(snapshot?.candles||{})[name]||[],interval:'1h',preview:false};
+}
+function showPortfolio(){
+ if(!snapshot)return;
+ const state=snapshot.state||{}, candles=snapshot.candles||{};
+ $('cash').textContent=money(state.cash);$('model').textContent=snapshot.model||'unknown';
+ $('lock').textContent=state.risk_locked?'LOCKED':'OFF';
+ const positions=state.positions||{};
+ $('holdings').textContent=Object.keys(positions).length
+  ?Object.entries(positions).map(([coin,qty])=>Number(qty).toFixed(6)+' '+coin.split('-')[0]).join(' · ')
+  :'No open positions';
+ const ledgerEquity=Number(state.cash||0)+Object.entries(positions).reduce((sum,[coin,qty])=>{
+  const rows=candles[coin]||[];
+  return sum+Number(qty)*(Number(rows[rows.length-1]?.close)||0);
+ },0);
+ $('equity').textContent=money(ledgerEquity);
+ $('portfolio-status').textContent='Last saved paper hour: '+formatTime(state.last_bar)
+  +' · Pending: '+(((state.pending||{}).targets||[]).join(', ')||'none')
+  +' · Snapshot saved: '+formatTime(snapshot.updated_utc);
+ const signal=(snapshot.signals||{})[symbolSelect.value]||{};
+ $('signal').textContent='Last hourly strategy signal: '+(signal.buy?'BUY candidate':'NO new buy candidate')
+  +' · '+(signal.explanation||'No explanation available')
+  +' (does not mean an order was filled)';
+}
+function renderTrades(){
+ const host=$('trades');host.replaceChildren();
+ const trades=(snapshot?.trades||[]).slice(-50).reverse();
+ if(!trades.length){host.textContent='No recorded virtual fills.';return;}
+ const table=document.createElement('table'),head=document.createElement('tr');
+ for(const title of ['Hour (IST)','Side','Coin','Quantity','Virtual price']){
+  const th=document.createElement('th');th.textContent=title;head.appendChild(th);
+ }
+ table.appendChild(head);
+ for(const trade of trades){
+  const row=document.createElement('tr');
+  for(const value of [formatTime(trade.time),trade.side,trade.symbol,Number(trade.quantity).toFixed(6),money(trade.price)]){
+   const cell=document.createElement('td');cell.textContent=value;
+   if(value===trade.side)cell.className=value==='BUY'?'green':'red';
+   row.appendChild(cell);
+  }
+  table.appendChild(row);
+ }
+ host.appendChild(table);
+}
+function setup(canvas){
+ const ratio=Math.min(2,window.devicePixelRatio||1),w=Math.max(280,canvas.clientWidth),h=canvas.clientHeight;
+ canvas.width=Math.floor(w*ratio);canvas.height=Math.floor(h*ratio);
+ const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);
+ return {ctx,w,h};
+}
+function draw(){
+ const selection=currentRows(),all=selection.rows.map(item=>({
+  ...item,open:Number(item.open),close:Number(item.close),low:Number(item.low),high:Number(item.high),
+ }));
+ const rows=all.slice(-110),{ctx:c,w,h}=setup($('chart'));c.clearRect(0,0,w,h);
+ if(!rows.length){c.fillStyle='#9aafc4';c.font='14px system-ui';c.fillText('No candle data available',18,30);
+  $('price').textContent='—';return;}
+ const left=14,right=94,top=20,bottom=30,plotW=Math.max(30,w-left-right);
+ const min=Math.min(...rows.map(p=>p.low)),max=Math.max(...rows.map(p=>p.high));
+ const pad=Math.max((max-min)*.08,max*.0004),lo=min-pad,hi=max+pad,span=hi-lo;
+ const y=v=>top+(hi-v)/span*(h-top-bottom),step=plotW/rows.length;
+ c.font='12px system-ui';
+ for(let i=0;i<5;i++){
+  const level=lo+i*span/4, yy=y(level);
+  c.strokeStyle='#294052';c.beginPath();c.moveTo(left,yy);c.lineTo(w-right,yy);c.stroke();
+  c.fillStyle='#9aafc4';c.fillText(level.toFixed(2),w-right+5,yy+4);
+ }
+ rows.forEach((p,i)=>{
+  const x=left+(i+.5)*step;
+  c.strokeStyle=c.fillStyle=p.close>=p.open?'#51e7b7':'#ff667f';
+  c.beginPath();c.moveTo(x,y(p.high));c.lineTo(x,y(p.low));c.stroke();
+  c.fillRect(x-Math.max(1,step*.28),y(Math.max(p.open,p.close)),Math.max(2,step*.56),
+   Math.max(1,Math.abs(y(p.open)-y(p.close))));
+ });
+ // Calculate EMAs on actual candles for the currently selected timeframe.
+ for(const [period,color] of [[20,'#f3c66e'],[50,'#69a7ff']]){
+  let ema=null;const series=all.map(p=>{ema=ema===null?p.close:ema+(p.close-ema)*2/(period+1);return ema}).slice(-rows.length);
+  c.strokeStyle=color;c.lineWidth=1.5;c.beginPath();
+  series.forEach((v,i)=>{const x=left+(i+.5)*step;i?c.lineTo(x,y(v)):c.moveTo(x,y(v))});c.stroke();
+ }
+ c.lineWidth=1;
+ if(!selection.preview){
+  for(const trade of snapshot?.trades||[]){
+   if(trade.symbol!==symbolSelect.value)continue;
+   const i=rows.findIndex(p=>(p.time||'')===trade.time);if(i<0)continue;
+   const x=left+(i+.5)*step;c.fillStyle=trade.side==='BUY'?'#51e7b7':'#ff667f';
+   c.fillText(trade.side==='BUY'?'▲ BUY':'▼ SELL',x-18,
+    trade.side==='BUY'?y(rows[i].low)+15:y(rows[i].high)-10);
+  }
+ }
+ const latest=rows[rows.length-1];
+ $('price').textContent=money(latest.close)+(selection.preview?' · 1m preview':' · saved 1h');
+ const liveInfo=selection.preview&&!latest.complete?' (forming candle)':'';
+ $('source').textContent=(selection.preview?minute?.provider:((snapshot?.market_sources||{})[symbolSelect.value]))||'saved hourly data';
+ $('source').textContent+=' · Latest candle: '+formatTime(latest.time)+liveInfo;
+}
+function showFeedStatus(){
+ const selected=timeframeSelect.value;
+ if(selected==='1h'){
+  $('feed-status').className='feed';
+  $('feed-status').textContent='Saved hourly paper candles · refreshes snapshots every 15s when your bot writes new data. Switch to 1m to preview public exchange candles.';
+  return;
+ }
+ if(!minute||minute.symbol!==symbolSelect.value){
+  $('feed-status').className='feed warning';
+  $('feed-status').textContent='Connecting to the crypto minute feed. Start python -m paper_trader.intraday_feed --port 8080 if this remains unavailable.';
+  return;
+ }
+ const last=minute.last_bar_time_utc, now=Date.now();
+ const age=last?Math.max(0,Math.floor((now-new Date(last).getTime())/1000)):null;
+ const stale=minute.status!=='ok'||age===null||age>240;
+ $('feed-status').className='feed '+(stale?'warning':'ok');
+ $('feed-status').textContent=stale?'STALE / UNAVAILABLE · ':'1m MARKET PREVIEW · ';
+ $('feed-status').textContent+=minute.provider||'No current provider';
+ $('feed-status').textContent+=' · Last candle '+formatTime(last);
+ $('feed-status').textContent+=' · Last provider check '+formatTime(minute.fetched_at_utc);
+ $('feed-status').textContent+=' · Cache '+minute.cache_age_seconds+'s';
+ if(minute.message)$('feed-status').textContent+=' · '+minute.message;
+ if(stale)$('feed-status').textContent+=' · Showing actual previously fetched candles or saved 1h fallback; no synthetic prices.';
+}
+async function refreshPreview(){
+ if(minuteLoading||timeframeSelect.value!=='1m')return;
+ minuteLoading=true;const symbol=symbolSelect.value;
+ try{
+  const response=await fetch('/api/crypto-preview?symbol='+encodeURIComponent(symbol)+'&t='+Date.now(),{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const result=await response.json();
+  if(symbol===symbolSelect.value)minute=result;
+ }catch(error){
+  if(symbol===symbolSelect.value){
+   if(minute?.symbol===symbol)minute={...minute,status:'stale',message:'Local server unavailable'};
+   else minute={symbol,status:'unavailable',bars:[],message:'Start the updated localhost server, not python -m http.server'};
+  }
+ }finally{minuteLoading=false;showFeedStatus();draw();}
+}
+async function refreshSnapshot(){
+ if(snapshotLoading)return;
+ snapshotLoading=true;
+ try{
+  const response=await fetch('../data/crypto_chart.json?t='+Date.now(),{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const data=await response.json();
+  if(data.mode!=='crypto_paper_only')throw Error('Invalid saved portfolio snapshot');
+  snapshot=data;showPortfolio();renderTrades();draw();
+  $('message').textContent='Read-only display. The hourly crypto bot independently produces simulated fills; opening this page does not trade.';
+ }catch(error){
+  $('message').textContent='Saved paper portfolio unavailable. Run python -m paper_trader.crypto_paper (once) and keep your separate hourly schedule running. '+error.message;
+ }finally{snapshotLoading=false;}
+}
+symbolSelect.onchange=()=>{minute=null;showPortfolio();showFeedStatus();draw();refreshPreview();};
+timeframeSelect.onchange=()=>{showFeedStatus();draw();refreshPreview();};
+window.addEventListener('resize',draw);
+function updateClock(){
+ $('clock').textContent=new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour12:true})+' IST';
+ showFeedStatus();
+}
+updateClock();refreshSnapshot();refreshPreview();
+setInterval(updateClock,1000);
+setInterval(refreshPreview,1000);
+setInterval(refreshSnapshot,15000);
 })();
-</script></body></html>
+</script>
+</body>
+</html>
