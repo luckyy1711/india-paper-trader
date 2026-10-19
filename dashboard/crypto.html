@@ -31,7 +31,7 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;bord
 <div class="panel">
  <div class="stats">
   <div class="stat"><small>Virtual USD cash</small><strong id="cash">—</strong></div>
-  <div class="stat"><small>Paper equity (last saved hourly prices)</small><strong id="equity">—</strong></div>
+  <div class="stat"><small>Paper equity (last saved trade prices)</small><strong id="equity">—</strong></div>
   <div class="stat"><small>Paper holdings</small><strong id="holdings">—</strong></div>
   <div class="stat"><small>Trading strategy</small><strong id="model">—</strong></div>
   <div class="stat"><small>Risk lock</small><strong id="lock">—</strong></div>
@@ -46,7 +46,7 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;bord
   </select></label>
   <label>Timeframe <select id="timeframe">
    <option value="1m">1m · public market preview</option>
-   <option value="1h">1h · saved paper candles</option>
+   <option value="saved">Saved paper fills · 1m after switch</option>
   </select></label>
   <span id="price">—</span>
  </div>
@@ -54,14 +54,14 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;bord
  <canvas id="chart" aria-label="BTC and ETH actual market candlestick graph"></canvas>
  <p class="small" id="source">Feed status will show candle time and last provider refresh.</p>
  <p class="small">The screen checks for changes every second, but its public exchange source is queried at most every 10 seconds per coin. Prices can be delayed, unchanged or unavailable. The latest <b>forming</b> 1-minute candle can change before it closes; no candles are fabricated. Binance USDT prices are an approximate USD proxy; Coinbase USD candles are used if needed.</p>
- <p class="small"><b class="green">▲ BUY</b> and <b class="red">▼ SELL</b> mark <b>recorded paper fills</b> on the saved 1-hour view. This 1-minute preview NEVER creates orders or trading signals. EMA20 and EMA50 are calculated on the displayed timeframe, not used to alter the hourly trading bot.</p>
- <p class="small" id="signal">Hourly strategy decisions are loaded from the saved portfolio snapshot.</p>
+ <p class="small"><b class="green">▲ BUY</b> and <b class="red">▼ SELL</b> mark <b>recorded paper fills</b> on saved 1-minute candles after conversion. Minute decisions use only <b>completed 1-minute candles</b>; the chart's preview cannot submit trades. The simulation fills from the next completed minute, including fees and slippage. EMA20 and EMA50 on the chart are informational.</p>
+ <p class="small" id="signal">The latest completed-candle strategy decision is loaded from the paper portfolio.</p>
 </div>
 <div class="panel">
  <h2>Recorded virtual fills</h2>
  <div class="tablewrap" id="trades">Loading trades…</div>
 </div>
-<p class="small" id="message">Paper-only. Your BTC bot processes confirmed hourly candles independently of this chart. The preview server cannot place exchange orders or change your portfolio.</p>
+<p class="small" id="message">Paper-only. Your BTC bot processes confirmed 1-minute candles when the separate minute runner is active. The preview server cannot place orders or change your portfolio.</p>
 </main>
 <script>
 (()=>{
@@ -82,7 +82,7 @@ function currentRows(){
     (minute.status==='ok'||minute.status==='stale')){
   return {rows:minute.bars,interval:'1m',preview:true};
  }
- return {rows:(snapshot?.candles||{})[name]||[],interval:'1h',preview:false};
+ return {rows:(snapshot?.candles||{})[name]||[],interval:snapshot?.candle_interval||'1h',preview:false};
 }
 function showPortfolio(){
  if(!snapshot)return;
@@ -98,11 +98,11 @@ function showPortfolio(){
   return sum+Number(qty)*(Number(rows[rows.length-1]?.close)||0);
  },0);
  $('equity').textContent=money(ledgerEquity);
- $('portfolio-status').textContent='Last saved paper hour: '+formatTime(state.last_bar)
+ $('portfolio-status').textContent='Last processed '+(snapshot.candle_interval||'1h')+' candle: '+formatTime(state.last_bar)
   +' · Pending: '+(((state.pending||{}).targets||[]).join(', ')||'none')
   +' · Snapshot saved: '+formatTime(snapshot.updated_utc);
  const signal=(snapshot.signals||{})[symbolSelect.value]||{};
- $('signal').textContent='Last hourly strategy signal: '+(signal.buy?'BUY candidate':'NO new buy candidate')
+ $('signal').textContent='Last completed '+(snapshot.candle_interval||'1h')+' strategy signal: '+(signal.buy?'BUY candidate':'NO new buy candidate')
   +' · '+(signal.explanation||'No explanation available')
   +' (does not mean an order was filled)';
 }
@@ -163,7 +163,7 @@ function draw(){
   series.forEach((v,i)=>{const x=left+(i+.5)*step;i?c.lineTo(x,y(v)):c.moveTo(x,y(v))});c.stroke();
  }
  c.lineWidth=1;
- if(!selection.preview){
+ if(!selection.preview || snapshot?.candle_interval==='1m'){
   for(const trade of snapshot?.trades||[]){
    if(trade.symbol!==symbolSelect.value)continue;
    const i=rows.findIndex(p=>(p.time||'')===trade.time);if(i<0)continue;
@@ -173,16 +173,16 @@ function draw(){
   }
  }
  const latest=rows[rows.length-1];
- $('price').textContent=money(latest.close)+(selection.preview?' · 1m preview':' · saved 1h');
+ $('price').textContent=money(latest.close)+(selection.preview?' · 1m preview':' · saved '+selection.interval);
  const liveInfo=selection.preview&&!latest.complete?' (forming candle)':'';
  $('source').textContent=(selection.preview?minute?.provider:((snapshot?.market_sources||{})[symbolSelect.value]))||'saved hourly data';
  $('source').textContent+=' · Latest candle: '+formatTime(latest.time)+liveInfo;
 }
 function showFeedStatus(){
  const selected=timeframeSelect.value;
- if(selected==='1h'){
+ if(selected==='saved'){
   $('feed-status').className='feed';
-  $('feed-status').textContent='Saved hourly paper candles · refreshes snapshots every 15s when your bot writes new data. Switch to 1m to preview public exchange candles.';
+  $('feed-status').textContent='Saved '+(snapshot?.candle_interval||'1h')+' paper candles and executed virtual fills · data reloads every 15s. The strategy and chart are independent processes.';
   return;
  }
  if(!minute||minute.symbol!==symbolSelect.value){
@@ -226,9 +226,9 @@ async function refreshSnapshot(){
   const data=await response.json();
   if(data.mode!=='crypto_paper_only')throw Error('Invalid saved portfolio snapshot');
   snapshot=data;showPortfolio();renderTrades();draw();
-  $('message').textContent='Read-only display. The hourly crypto bot independently produces simulated fills; opening this page does not trade.';
+  $('message').textContent='Read-only display. Your minute bot independently decides on completed 1m candles and records virtual fills on the NEXT completed bar. Opening this page does not trade.';
  }catch(error){
-  $('message').textContent='Saved paper portfolio unavailable. Run python -m paper_trader.crypto_paper (once) and keep your separate hourly schedule running. '+error.message;
+  $('message').textContent='Saved paper portfolio unavailable. Start the separate trading runner with python -m paper_trader.crypto_minute --loop. '+error.message;
  }finally{snapshotLoading=false;}
 }
 symbolSelect.onchange=()=>{minute=null;showPortfolio();showFeedStatus();draw();refreshPreview();};
