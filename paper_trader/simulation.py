@@ -123,6 +123,12 @@ def build_simulation_report(
     if result.get("status") == "ok" and "replay_equity_points" in result:
         scale = float(initial_cash) / INITIAL_CASH
         report["replay"] = {
+            "benchmark_candles": [
+                {"date": str(row["date"]), **{k: round(float(row[k]), 2) for k in ("open", "high", "low", "close")}}
+                for row in benchmark
+                if str(row.get("date")) in {p["date"] for p in result["replay_equity_points"]}
+                and all(row.get(k) is not None and math.isfinite(float(row[k])) and float(row[k]) > 0 for k in ("open", "high", "low", "close"))
+            ],
             "equity_points": [{"date": p["date"], "equity": round(float(p["equity"]) * scale, 2)} for p in result["replay_equity_points"]],
             "trades": [{**t, **{key: round(float(t[key]) * scale, 2) for key in ("gross_value", "costs", "cash_after") if key in t}, "quantity": t["quantity"]} for t in result["replay_trades"]],
             "note": "Trades are generated at the original ₹10,000 sizing. Monetary totals are scaled for display when initial cash differs; share quantities remain original.",
