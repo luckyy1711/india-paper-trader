@@ -178,6 +178,7 @@ def execute_rebalance(
     fill_date: str,
     signal_date: str,
     cost_multiplier: float = 1.0,
+    target_weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute a simulated rebalance with configurable research-only cost stress."""
     if not math.isfinite(cost_multiplier) or cost_multiplier < 1.0:
@@ -185,6 +186,10 @@ def execute_rebalance(
     positions: dict[str, int] = {str(k): int(v) for k, v in state["positions"].items()}
     cash = float(state["cash"])
     targets = [] if state.get("risk_locked", False) else list(dict.fromkeys(target_symbols))[:MAX_POSITIONS]
+    if target_weights is not None:
+        for symbol, weight in target_weights.items():
+            if not math.isfinite(float(weight)) or not 0 <= float(weight) <= MAX_POSITION_WEIGHT:
+                raise ValueError(f"Invalid position weight for {symbol}")
 
     for symbol in positions:
         price = open_prices.get(symbol)
@@ -233,7 +238,8 @@ def execute_rebalance(
     # Trim existing target positions if appreciation/gaps have breached the sizing limit.
     for symbol in list(positions):
         price = float(open_prices[symbol])
-        permitted = math.floor(position_cap / price) if price > 0 else 0
+        symbol_cap = nav * target_weights.get(symbol, MAX_POSITION_WEIGHT) if target_weights is not None else position_cap
+        permitted = math.floor(min(position_cap, symbol_cap) / price) if price > 0 else 0
         excess = max(0, positions[symbol] - permitted)
         if excess:
             fill = price * (1.0 - SLIPPAGE_RATE)
@@ -255,7 +261,8 @@ def execute_rebalance(
         if price <= 0:
             continue
         current_exposure = sum(qty * float(open_prices[sym]) for sym, qty in positions.items())
-        position_room = max(0.0, position_cap - current_exposure * 0.0)
+        symbol_cap = nav * target_weights.get(symbol, MAX_POSITION_WEIGHT) if target_weights is not None else position_cap
+        position_room = max(0.0, min(position_cap, symbol_cap))
         exposure_room = max(0.0, total_exposure_cap - current_exposure)
         spend_room = min(cash, position_room, exposure_room)
         unit_cash_cost = price * (1.0 + TRANSACTION_COST_RATE)
