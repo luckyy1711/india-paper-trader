@@ -50,6 +50,28 @@ class CryptoPreviewTests(unittest.TestCase):
         self.assertEqual(crypto_preview.parse_binance_klines(rows, now), [])
         self.assertEqual(crypto_preview.parse_coinbase_candles([[1, "bogus"]], now), [])
 
+    def test_base_asset_volumes_are_exact_exchange_values(self):
+        stamp = 1_799_999_980
+        now = datetime.fromtimestamp(stamp + 75, timezone.utc)
+        binance = crypto_preview.parse_binance_klines([binance_row(stamp)], now)
+        coinbase = crypto_preview.parse_coinbase_candles([coinbase_row(stamp)], now)
+        self.assertEqual(binance[0]["volume"], 50)
+        self.assertEqual(coinbase[0]["volume"], 50)
+
+    def test_missing_volume_stays_missing_without_fabricated_zero(self):
+        stamp = 1_799_999_980
+        now = datetime.fromtimestamp(stamp + 75, timezone.utc)
+        binance = binance_row(stamp)
+        binance[5] = "NaN"
+        parsed = crypto_preview.parse_binance_klines([binance], now)
+        self.assertEqual(len(parsed), 1)
+        self.assertNotIn("volume", parsed[0])
+        coinbase = coinbase_row(stamp)
+        coinbase.pop(5)
+        other = crypto_preview.parse_coinbase_candles([coinbase], now)
+        self.assertEqual(len(other), 1)
+        self.assertNotIn("volume", other[0])
+
     def test_unknown_market_does_not_download(self):
         with patch.object(crypto_preview, "_read_json") as fetch:
             with self.assertRaises(ValueError):
