@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from .market_data import download_market_data, BENCHMARK_KEY
 from .main import STATE_PATH, TRADES_PATH
+from .core import select_targets
+from .config import STRATEGIES
+from .model_select import current_strategy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "paper_chart.json"
@@ -23,7 +26,19 @@ def build_snapshot(bars, state, trades):
     symbols = sorted(traded)
     if not symbols:
         symbols = sorted(s for s in bars if s != BENCHMARK_KEY)[:5]
+    model_signals = {}
+    for name in STRATEGIES:
+        try:
+            targets = select_targets(
+                {s: rows for s, rows in bars.items() if s != BENCHMARK_KEY},
+                name, benchmark_bars=bars.get(BENCHMARK_KEY, []),
+            )
+            model_signals[name] = {"targets": targets, "status": "ok"}
+        except (ValueError, KeyError, TypeError) as exc:
+            model_signals[name] = {"targets": [], "status": "error", "reason": str(exc)[:120]}
     return {
+        "active_strategy": current_strategy(),
+        "model_signals": model_signals,
         "mode": "actual_paper_portfolio_read_only",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "Yahoo Finance daily bars (delayed, not streaming)",
