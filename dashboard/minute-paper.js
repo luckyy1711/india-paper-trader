@@ -54,14 +54,30 @@
    const endpoint='https://data-api.binance.vision/api/v3/klines';
    try{
      // Public browser requests can fail because of regional restrictions/CORS.
-     const output=await Promise.all(P.map(async p=>{
+     let source='Binance public USDT feed';
+     async function binance(p){
        const u=endpoint+'?symbol='+p+'&interval=1m&limit=80';
        const response=await fetch(u,{cache:'no-store',signal:AbortSignal.timeout(10000)});
-       if(!response.ok)throw Error('HTTP '+response.status);
+       if(!response.ok)throw Error('Binance HTTP '+response.status);
        const raw=await response.json();
-       if(!Array.isArray(raw)||raw.length<55)throw Error('Not enough 1m bars');
+       if(!Array.isArray(raw)||raw.length<55)throw Error('Not enough Binance 1m bars');
        return raw.map(r=>({t:Number(r[0]),close:Number(r[4]),closed:Number(r[6])<Date.now()-2000}));
-     }));
+     }
+     async function coinbase(p){
+       const pair=p.replace('USDT','-USD');
+       const url='https://api.exchange.coinbase.com/products/'+pair+'/candles?granularity=60';
+       const response=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(10000)});
+       if(!response.ok)throw Error('Coinbase HTTP '+response.status);
+       const raw=await response.json();
+       if(!Array.isArray(raw)||raw.length<55)throw Error('Not enough Coinbase 1m bars');
+       return raw.map(r=>({t:Number(r[0])*1000,close:Number(r[4]),closed:Number(r[0])*1000+62000<Date.now()})).sort((a,b)=>a.t-b.t);
+     }
+     let output;
+     try{output=await Promise.all(P.map(binance))}
+     catch(firstError){
+       try{output=await Promise.all(P.map(coinbase));source='Coinbase public USD feed'}
+       catch(secondError){throw Error('Binance: '+firstError.message+'; Coinbase: '+secondError.message)}
+     }
      for(let i=0;i<P.length;i++){
        const rows=output[i].filter(r=>r.closed&&Number.isFinite(r.close)&&r.close>0);
        if(!rows.length)throw Error('No confirmed bars');
@@ -69,7 +85,7 @@
      }
      online=true;lastFetch=Date.now();
      const s=load();if(s){tick(s)}
-     $('minute-network').textContent='Public Binance 1-minute candles · BTC/USDT & ETH/USDT (USDT approximates USD)';
+     $('minute-network').textContent=source+' · 1-minute candles. Binance USDT is an approximate USD proxy.';
    }catch(e){
      online=false;
      $('minute-network').textContent='1-minute feed unavailable ('+e.message+'). No trades processed. Public Binance API access varies by network/region.';
