@@ -71,7 +71,8 @@
    $('minute-cash').textContent=on?cash(s.cash):'—';$('minute-equity').textContent=on?cash(equity(s)):'—';
    $('minute-fills').textContent=on?String(s.trades.length):'—';
    $('minute-price').textContent=live[selected]?cash(live[selected]):'Unavailable';
-   $('minute-latest').textContent=lastFetch?'Last price refresh '+new Date(lastFetch).toLocaleTimeString():'Waiting for market data';\n   $('minute-decision').textContent=latestDecision;
+   $('minute-latest').textContent=lastFetch?'Last price refresh '+new Date(lastFetch).toLocaleTimeString():'Waiting for market data';
+   $('minute-decision').textContent=latestDecision;
    const rows=on?s.trades.slice(-8).reverse():[];
    $('minute-ledger').textContent=rows.length?rows.map(x=>dateString(x.min)+' '+x.action+' '+x.p+' '+x.qty.toFixed(6)+' @ '+cash(x.price)).join('\n'):'No 1-minute virtual trades yet.';
  }
@@ -120,6 +121,9 @@
  $('minute-toggle').addEventListener('click',()=>{
    const s=load();if(s){if(!confirm('Reset ONLY your browser 1-minute demo? Recorded demo trades will be deleted. GitHub cloud portfolio will NOT change.'))return;localStorage.removeItem(KEY);}
    else{if(!online){$('minute-network').textContent='Market feed unavailable; cannot start.';return}const fresh=initial();fresh.lastMinute=history[P[0]]?.at(-1)?.t||null;save(fresh)}
-   latestDecision='Demo reset or newly started · observing next completed minute';\n   render();\n });\n $('symbol').addEventListener('change',render);
+   latestDecision='Demo reset or newly started · observing next completed minute';
+   render();
+ });
+ $('symbol').addEventListener('change',render);
  render();update();setInterval(update,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)update()});
 })();
