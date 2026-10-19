@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import fcntl
 import json
 import math
@@ -67,6 +68,59 @@ def migrate_portfolio(state: dict) -> dict:
     account.save_json(account.STATE, state)
     print("Switched to 1m: previous unfilled hourly signal cancelled; virtual cash, holdings and fills preserved.", flush=True)
     return state
+
+
+
+def reset_virtual_portfolio() -> dict:
+    """Archive only crypto paper data and restart at $1,000 with no fills.
+
+    Caller must own paper_lock(), so the runner cannot race the reset.
+    Backup copies remain outside the active ledger and are ignored by git.
+    This command never fetches data or submits real orders.
+    """
+    account.DATA.mkdir(parents=True, exist_ok=True)
+    # Check any existing state before changing files. Invalid state fails closed.
+    if account.STATE.exists():
+        account.load_state()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    archive = account.DATA / "crypto_reset_backups" / stamp
+    archive.mkdir(parents=True, exist_ok=False)
+    existing = [path for path in (account.STATE, account.TRADES, account.CHART) if path.exists()]
+    for path in existing:
+        shutil.copy2(path, archive / path.name)
+
+    fresh = account.fresh_state()
+    fresh.update({
+        "bar_interval": INTERVAL, "last_fills": [],
+        "last_bar": None, "pending": None,
+        "reset_at_utc": datetime.now(timezone.utc).isoformat(),
+    })
+
+    # Truncate active fill ledger with an atomic replacement; don't touch its
+    # archived copy. The new snapshot is published before the next candle.
+    rows_tmp = account.TRADES.with_name(account.TRADES.name + ".reset-tmp")
+    with rows_tmp.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["time", "side", "symbol", "quantity", "price", "fees", "reason"])
+    rows_tmp.replace(account.TRADES)
+    account.save_json(account.STATE, fresh)
+
+    # Immediately remove stale P&L, old markers and old chart history.
+    account.save_json(account.CHART, {
+        "mode": "crypto_paper_only", "currency": "USD",
+        "model": fresh["model"], "candle_interval": INTERVAL,
+        "updated_utc": datetime.now(timezone.utc).isoformat(),
+        "state": fresh, "signals": {}, "market_sources": {},
+        "performance": account.crypto_performance(fresh, {}, []),
+        "candles": {}, "trades": [],
+        "notes": "Freshly reset virtual account; no paper candles processed or trades placed yet.",
+    })
+    return {
+        "status": "reset", "virtual_starting_cash_usd": fresh["cash"],
+        "open_positions": fresh["positions"], "fills": 0,
+        "old_data_archive": str(archive),
+        "next": "Run python -m paper_trader.crypto_minute --loop when ready.",
+    }
 
 
 def download_confirmed(now: datetime | None = None):
@@ -207,7 +261,17 @@ def main():
     parser = argparse.ArgumentParser(description="BTC + ETH minute-candle PAPER trading (never real exchange orders)")
     parser.add_argument("--loop", action="store_true", help="Check every 15s; execute at most once per confirmed minute")
     parser.add_argument("--status", action="store_true", help="Show existing virtual portfolio without starting a trade")
+    parser.add_argument("--reset-paper-account", action="store_true", help="Archive crypto paper results and reset to 1,000 virtual USD")
+    parser.add_argument("--confirm-reset", action="store_true", help="Required safety confirmation for --reset-paper-account")
     args = parser.parse_args()
+    if args.reset_paper_account:
+        if not args.confirm_reset or args.loop or args.status:
+            parser.error("Reset requires --reset-paper-account --confirm-reset and cannot be combined with --loop or --status")
+        with paper_lock():
+            print(json.dumps(reset_virtual_portfolio(), indent=2), flush=True)
+        return
+    if args.confirm_reset:
+        parser.error("--confirm-reset only works with --reset-paper-account")
     if args.status:
         print(json.dumps(account.load_state(), indent=2))
         return
