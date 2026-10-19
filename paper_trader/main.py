@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import fcntl
+from contextlib import contextmanager
 import json
 import math
 import sys
@@ -22,6 +24,21 @@ STATE_PATH = DATA_DIR / "state.json"
 TRADES_PATH = DATA_DIR / "trades.csv"
 RUNS_PATH = DATA_DIR / "runs.jsonl"
 IST = ZoneInfo("Asia/Kolkata")
+LOCK_PATH = DATA_DIR / ".paper_session.lock"
+
+
+@contextmanager
+def portfolio_lock():
+    """Serialize local paper runs and explicit model changes on Linux runners."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with LOCK_PATH.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 TRADE_FIELDS = ["date", "signal_date", "side", "symbol", "quantity", "price", "gross_value", "costs", "reason", "cash_after"]
 
 
@@ -230,8 +247,8 @@ def run_once() -> int:
 
 
 def main() -> int:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return run_once()
+    with portfolio_lock():
+        return run_once()
 
 
 if __name__ == "__main__":
