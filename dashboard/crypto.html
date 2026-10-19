@@ -21,6 +21,38 @@ select{border:1px solid #395367;border-radius:7px;background:#1a3040;color:#fff;
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}
 .tablewrap{overflow-x:auto}.small{font-size:12px}
 @media(max-width:650px){main{padding:12px}h1{font-size:22px}#chart{height:310px}#price{font-size:19px}}
+
+.account-head{align-items:flex-start;margin-bottom:16px}
+.kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:650}
+.account h2{margin:5px 0 0}
+.profit-hero{display:flex;gap:24px;align-items:stretch;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:18px}
+.profit-overview{flex:2;min-width:240px}
+.profit-overview strong{display:block;font-size:clamp(34px,6vw,51px);font-variant-numeric:tabular-nums;letter-spacing:-.035em;margin:2px 0}
+.profit-overview small{display:block}
+#pnl-pct{font-size:17px;font-weight:750;margin-left:8px}
+.last-fill{flex:1;min-width:240px;border-left:1px solid var(--line);padding-left:20px}
+.last-fill strong{display:block;font-size:19px;margin:9px 0 4px}
+.action-chip{display:inline-flex;align-items:center;gap:6px;border-radius:100px;padding:7px 12px;border:1px solid var(--line);font-size:12px;font-weight:750;letter-spacing:.08em}
+.action-chip.buy{background:rgba(81,231,183,.1);border-color:rgba(81,231,183,.35);color:var(--green)}
+.action-chip.sell{background:rgba(255,102,127,.12);border-color:rgba(255,102,127,.35);color:var(--red)}
+.action-chip.hold{color:#efc37a;border-color:#665236;background:rgba(239,195,122,.08)}
+.positive{color:var(--green)}.negative{color:var(--red)}.neutral{color:#edf5ff}
+.metrics{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.metrics .stat{padding:13px 15px;background:rgba(8,13,21,.5);border:1px solid #223649;border-radius:10px}
+.metrics .stat strong{font-size:21px;font-variant-numeric:tabular-nums}
+.exposure{margin:18px 0 6px}
+.exposure-top{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:9px}
+.exposure-track{display:flex;width:100%;height:12px;background:#1c3140;border-radius:100px;overflow:hidden}
+.exposure-cash{height:100%;background:#699bb8;transition:width .35s ease}
+.exposure-asset{height:100%;background:var(--green);transition:width .35s ease}
+.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:#699bb8}
+.legend-dot.asset{background:var(--green)}
+.account-note{font-size:12px;margin-top:14px}
+.trade-side{font-weight:800;letter-spacing:.04em;white-space:nowrap}
+.tablewrap{overflow-x:auto}.tablewrap table{min-width:820px}td{font-variant-numeric:tabular-nums;white-space:nowrap}
+td.wrap{white-space:normal;min-width:160px}
+.result-label{font-weight:750}
+@media(max-width:650px){.last-fill{border-left:0;border-top:1px solid var(--line);padding:14px 0 0}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics .stat{padding:10px}.metrics .stat strong{font-size:17px}}
 </style>
 </head>
 <body><main>
@@ -28,15 +60,52 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;bord
  <div><small>NEON / CRYPTO PAPER PORTFOLIO · VISUAL MARKET PREVIEW</small><h1>BTC / ETH Terminal</h1></div>
  <div class="row"><span class="muted" id="clock"></span><a href="paper.html">Stock terminal ↗</a></div>
 </div>
-<div class="panel">
- <div class="stats">
-  <div class="stat"><small>Virtual USD cash</small><strong id="cash">—</strong></div>
-  <div class="stat"><small>Paper equity (last saved trade prices)</small><strong id="equity">—</strong></div>
-  <div class="stat"><small>Paper holdings</small><strong id="holdings">—</strong></div>
-  <div class="stat"><small>Trading strategy</small><strong id="model">—</strong></div>
-  <div class="stat"><small>Risk lock</small><strong id="lock">—</strong></div>
+<div class="panel account">
+ <div class="row heading account-head">
+  <div><span class="kicker">YOUR VIRTUAL TRADING ACCOUNT</span><h2>Portfolio performance</h2></div>
+  <div><span id="latest-action" class="action-chip hold">● WAITING</span></div>
  </div>
- <p class="small" id="portfolio-status">Loading saved paper-trading snapshot…</p>
+ <div class="profit-hero">
+  <div class="profit-overview">
+   <span class="kicker">TOTAL NET PROFIT / LOSS</span>
+   <div><strong id="pnl" class="neutral">—</strong><span id="pnl-pct">—</span></div>
+   <small>Since the bot started · includes simulated fees, slippage and the current value of held coins</small>
+  </div>
+  <div class="last-fill">
+   <span class="kicker">LAST RECORDED VIRTUAL TRADE</span>
+   <strong id="last-fill-title">No recorded trade yet</strong>
+   <small id="last-fill-subtitle">The bot will record BUY or SELL when a trade executes.</small>
+  </div>
+ </div>
+ <div class="stats metrics">
+  <div class="stat"><small>Starting virtual money</small><strong id="initial">—</strong></div>
+  <div class="stat"><small>Available cash</small><strong id="cash">—</strong></div>
+  <div class="stat"><small>Invested now · market value</small><strong id="invested">—</strong></div>
+  <div class="stat"><small>Total account value</small><strong id="equity">—</strong></div>
+  <div class="stat"><small>Profit from completed SELLs</small><strong id="realized">—</strong></div>
+  <div class="stat"><small>Unrealized profit on holdings</small><strong id="unrealized">—</strong></div>
+  <div class="stat"><small>Total money spent on BUYs</small><strong id="lifetime-buy">—</strong></div>
+  <div class="stat"><small>Total recorded trading fees</small><strong id="fees">—</strong></div>
+ </div>
+ <div class="exposure">
+  <div class="exposure-top">
+   <span class="kicker">Where the virtual money is now</span>
+   <span class="small"><span class="legend-dot"></span> Cash <b id="cash-pct">—</b> &nbsp; <span class="legend-dot asset"></span> Coins <b id="asset-pct">—</b></span>
+  </div>
+  <div class="exposure-track" aria-label="Virtual cash versus crypto market exposure">
+   <div id="cash-bar" class="exposure-cash" style="width:0%"></div>
+   <div id="asset-bar" class="exposure-asset" style="width:0%"></div>
+  </div>
+ </div>
+ <div class="row" style="gap:18px;margin-top:16px">
+  <span class="small">Open positions: <b id="holdings">—</b></span>
+  <span class="small">Virtual BUYs: <b id="buys">—</b></span>
+  <span class="small">Virtual SELLs: <b id="sells">—</b></span>
+  <span class="small">Strategy: <b id="model">—</b></span>
+  <span class="small">Risk lock: <b id="lock">—</b></span>
+ </div>
+ <p id="portfolio-status" class="account-note">Loading saved paper portfolio…</p>
+ <p id="basis-note" class="account-note">Verified FIFO profit breakdown requires complete trade records.</p>
 </div>
 <div class="panel">
  <div class="row">
@@ -58,7 +127,8 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;bord
  <p class="small" id="signal">The latest completed-candle strategy decision is loaded from the paper portfolio.</p>
 </div>
 <div class="panel">
- <h2>Recorded virtual fills</h2>
+ <div class="row heading"><h2>BUY / SELL history and trade profit</h2><span id="trade-count" class="kicker">— FILLS</span></div>
+ <p class="small">Only executed virtual trades appear here. The profit on a SELL accounts for the purchase cost and both trade fees (FIFO). A BUY is an investment, not an immediate profit.</p>
  <div class="tablewrap" id="trades">Loading trades…</div>
 </div>
 <p class="small" id="message">Paper-only. Your BTC bot processes confirmed 1-minute candles when the separate minute runner is active. The preview server cannot place orders or change your portfolio.</p>
@@ -84,44 +154,116 @@ function currentRows(){
  }
  return {rows:(snapshot?.candles||{})[name]||[],interval:snapshot?.candle_interval||'1h',preview:false};
 }
+function signedMoney(value){
+ if(value===null||value===undefined||!Number.isFinite(Number(value)))return '—';
+ return (Number(value)>0?'+':'')+money(value);
+}
+function markGain(element,value){
+ element.classList.remove('positive','negative','neutral');
+ element.classList.add(value>0?'positive':value<0?'negative':'neutral');
+}
 function showPortfolio(){
  if(!snapshot)return;
- const state=snapshot.state||{}, candles=snapshot.candles||{};
- $('cash').textContent=money(state.cash);$('model').textContent=snapshot.model||'unknown';
- $('lock').textContent=state.risk_locked?'LOCKED':'OFF';
+ const state=snapshot.state||{}, p=snapshot.performance||null;
  const positions=state.positions||{};
+ const fmt=(id,value)=>{$(id).textContent=value===null||value===undefined?'—':money(value);};
+ $('model').textContent=(snapshot.model||'unknown').toUpperCase();
+ $('lock').textContent=state.risk_locked?'ON · TRADING BLOCKED':'OFF';
+ $('lock').className=state.risk_locked?'red':'green';
  $('holdings').textContent=Object.keys(positions).length
-  ?Object.entries(positions).map(([coin,qty])=>Number(qty).toFixed(6)+' '+coin.split('-')[0]).join(' · ')
-  :'No open positions';
- const ledgerEquity=Number(state.cash||0)+Object.entries(positions).reduce((sum,[coin,qty])=>{
-  const rows=candles[coin]||[];
-  return sum+Number(qty)*(Number(rows[rows.length-1]?.close)||0);
- },0);
- $('equity').textContent=money(ledgerEquity);
- $('portfolio-status').textContent='Last processed '+(snapshot.candle_interval||'1h')+' candle: '+formatTime(state.last_bar)
-  +' · Pending: '+(((state.pending||{}).targets||[]).join(', ')||'none')
-  +' · Snapshot saved: '+formatTime(snapshot.updated_utc);
+  ?Object.entries(positions).map(([symbol,quantity])=>Number(quantity).toFixed(6)+' '+symbol.split('-')[0]).join(' · ')
+  :'none';
+ fmt('initial',p?.initial_capital_usd??state.initial_cash);
+ fmt('cash',p?.available_cash_usd??state.cash);
  const signal=(snapshot.signals||{})[symbolSelect.value]||{};
- $('signal').textContent='Last completed '+(snapshot.candle_interval||'1h')+' strategy signal: '+(signal.buy?'BUY candidate':'NO new buy candidate')
-  +' · '+(signal.explanation||'No explanation available')
-  +' (does not mean an order was filled)';
+ $('signal').textContent='Last completed '+(snapshot.candle_interval||'1h')+' strategy signal: '
+  +(signal.buy?'BUY candidate':'NO new buy candidate')+' · '+(signal.explanation||'Not available')
+  +'. A candidate is not the same as a recorded virtual fill.';
+ if(!p){
+  for(const id of ['invested','equity','realized','unrealized','lifetime-buy','fees','pnl','pnl-pct','cash-pct','asset-pct','buys','sells']){
+   $(id).textContent='—';
+  }
+  $('cash-bar').style.width='0%';$('asset-bar').style.width='0%';
+  $('latest-action').textContent='● NO ACCOUNTING SNAPSHOT';$('latest-action').className='action-chip hold';
+  $('basis-note').textContent='Accounting snapshot missing. Update the crypto trading engine, then wait for its next saved confirmed candle.';
+ }else{
+  fmt('invested',p.holdings_market_value_usd);
+  fmt('equity',p.portfolio_equity_usd);
+  fmt('lifetime-buy',p.lifetime_buy_spend_usd);
+  fmt('fees',p.total_recorded_fees_usd);
+  $('pnl').textContent=signedMoney(p.net_pnl_usd);
+  markGain($('pnl'),p.net_pnl_usd);
+  $('pnl-pct').textContent=(p.net_return_pct>0?'+':'')+Number(p.net_return_pct).toFixed(2)+'%';
+  markGain($('pnl-pct'),p.net_return_pct);
+  for(const [id,val] of [['realized',p.realized_pnl_usd],['unrealized',p.unrealized_pnl_usd]]){
+   $(id).textContent=signedMoney(val);
+   markGain($(id),val);
+  }
+  $('buys').textContent=p.buy_count;
+  $('sells').textContent=p.sell_count;
+  const equity=Number(p.portfolio_equity_usd);
+  const cashWeight=equity>0?Math.max(0,Math.min(100,Number(p.available_cash_usd)/equity*100)):0;
+  const investedWeight=equity>0?100-cashWeight:0;
+  $('cash-pct').textContent=cashWeight.toFixed(1)+'%';
+  $('asset-pct').textContent=investedWeight.toFixed(1)+'%';
+  $('cash-bar').style.width=cashWeight+'%';$('asset-bar').style.width=investedWeight+'%';
+  const recent=Array.isArray(state.last_fills)?state.last_fills:[];
+  const side=recent.some(t=>t.side==='BUY')?'BUY':recent.some(t=>t.side==='SELL')?'SELL':null;
+  const action=side||(p.last_processed_action==='HOLD'?'HOLD':'WAITING');
+  $('latest-action').className='action-chip '+(side?side.toLowerCase():'hold');
+  $('latest-action').textContent=(side==='BUY'?'▲ ':side==='SELL'?'▼ ':'● ')+action+' · LAST BOT CANDLE';
+  const t=p.last_recorded_trade;
+  if(t){
+   $('last-fill-title').textContent=(t.side==='BUY'?'▲ BUY ':'▼ SELL ')+Number(t.quantity).toFixed(8)+' '+t.symbol.split('-')[0];
+   $('last-fill-title').className=t.side==='BUY'?'green':'red';
+   let desc=(t.side==='BUY'?'Spent ':'Received ')+money(Math.abs(t.cash_change_usd))+
+      ' · Fill '+money(t.price)+' · Fee '+money(t.fees_usd);
+   if(t.side==='SELL' && t.realized_pnl_usd!==null && t.realized_pnl_usd!==undefined)
+    desc+=' · Realized P&L '+signedMoney(t.realized_pnl_usd);
+   $('last-fill-subtitle').textContent=desc+' · '+formatTime(t.time);
+  }else{
+   $('last-fill-title').textContent='No recorded virtual trade yet';
+   $('last-fill-subtitle').textContent='The bot is analyzing candles. It trades only on qualifying signals.';
+  }
+  $('basis-note').textContent=(p.basis_note||'')+
+   ' All account values use the last saved confirmed bot candle ('+formatTime(p.valued_at_utc)+'), not the moving chart quote.';
+ }
+ $('portfolio-status').textContent='Last processed '+(snapshot.candle_interval||'1h')+' candle: '+formatTime(state.last_bar)
+  +' · Next targets: '+(((state.pending||{}).targets||[]).join(', ')||'none')
+  +' · Snapshot written: '+formatTime(snapshot.updated_utc);
 }
 function renderTrades(){
  const host=$('trades');host.replaceChildren();
- const trades=(snapshot?.trades||[]).slice(-50).reverse();
- if(!trades.length){host.textContent='No recorded virtual fills.';return;}
+ const p=snapshot?.performance;
+ const rows=p?.recent_fills||((snapshot?.trades||[]).map(t=>({
+   ...t,fees_usd:Number(t.fees||0),notional_usd:Number(t.quantity)*Number(t.price),
+   cash_change_usd:(t.side==='BUY'?-1:1)*(Number(t.quantity)*Number(t.price)+(t.side==='BUY'?1:-1)*Number(t.fees||0)),
+   realized_pnl_usd:null
+ })));
+ $('trade-count').textContent=(p?.recorded_trade_count??rows.length)+' TOTAL FILLS';
+ const trades=rows.slice(-60).reverse();
+ if(!trades.length){host.textContent='No virtual BUY or SELL has executed yet. HOLD does not create a trade record.';return;}
  const table=document.createElement('table'),head=document.createElement('tr');
- for(const title of ['Hour (IST)','Side','Coin','Quantity','Virtual price']){
-  const th=document.createElement('th');th.textContent=title;head.appendChild(th);
+ for(const label of ['Executed (IST)','Action','Market','Quantity','Fill price','Cash invested / received','Fees','Realized P&L','Reason']){
+  const th=document.createElement('th');th.textContent=label;head.appendChild(th);
  }
  table.appendChild(head);
  for(const trade of trades){
   const row=document.createElement('tr');
-  for(const value of [formatTime(trade.time),trade.side,trade.symbol,Number(trade.quantity).toFixed(6),money(trade.price)]){
-   const cell=document.createElement('td');cell.textContent=value;
-   if(value===trade.side)cell.className=value==='BUY'?'green':'red';
-   row.appendChild(cell);
-  }
+  const delta=Number(trade.cash_change_usd);
+  const fields=[
+   formatTime(trade.time),trade.side,trade.symbol,Number(trade.quantity).toFixed(8),
+   money(trade.price),(delta<0?'− ':'+ ')+money(Math.abs(delta)),money(trade.fees_usd),
+   trade.side==='SELL'?signedMoney(trade.realized_pnl_usd):'—',trade.reason||'—'
+  ];
+  fields.forEach((value,i)=>{
+   const td=document.createElement('td');td.textContent=value;
+   if(i===1)td.className='trade-side '+(trade.side==='BUY'?'green':'red');
+   if(i===7 && trade.realized_pnl_usd!==null && trade.realized_pnl_usd!==undefined)
+    td.className='result-label '+(Number(trade.realized_pnl_usd)>0?'green':Number(trade.realized_pnl_usd)<0?'red':'');
+   if(i===8)td.className='wrap';
+   row.appendChild(td);
+  });
   table.appendChild(row);
  }
  host.appendChild(table);
@@ -200,7 +342,7 @@ function showFeedStatus(){
  $('feed-status').textContent+=' · Last provider check '+formatTime(minute.fetched_at_utc);
  $('feed-status').textContent+=' · Cache '+minute.cache_age_seconds+'s';
  if(minute.message)$('feed-status').textContent+=' · '+minute.message;
- if(stale)$('feed-status').textContent+=' · Showing actual previously fetched candles or saved 1h fallback; no synthetic prices.';
+ if(stale)$('feed-status').textContent+=' · Showing actual previously fetched candles or saved paper bars; no synthetic prices.';
 }
 async function refreshPreview(){
  if(minuteLoading||timeframeSelect.value!=='1m')return;
