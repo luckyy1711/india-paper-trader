@@ -1,7 +1,7 @@
 """Isolated 24/7 BTC/ETH hourly PAPER trading. No exchange credentials or orders.
 
-Uses confirmed hourly Yahoo Finance bars, delayed simulated fills at the
-most recently confirmed close, and a separate USD virtual portfolio.
+Uses completed hourly bars from public Binance, Coinbase or Yahoo sources,
+delayed simulated fills from prior signals, and a separate USD virtual portfolio.
 """
 from __future__ import annotations
 
