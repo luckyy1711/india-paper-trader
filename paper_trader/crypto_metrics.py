@@ -51,6 +51,7 @@ def crypto_performance(state: dict, bars: dict, trades: list[dict]) -> dict:
     lots = defaultdict(list)
     accounting_ok = True
     latest = None
+    recent_fills = []
     row_count = 0
 
     for row in trades:
@@ -114,6 +115,7 @@ def crypto_performance(state: dict, bars: dict, trades: list[dict]) -> dict:
                 "realized_pnl_usd": profit,
                 "reason": str(row.get("reason", "")),
             }
+            recent_fills.append(latest)
         except (ValueError, TypeError, KeyError, ZeroDivisionError, OverflowError):
             accounting_ok = False
             # Do not claim a partial FIFO profit figure is fully reconciled.
@@ -133,6 +135,10 @@ def crypto_performance(state: dict, bars: dict, trades: list[dict]) -> dict:
         accounting_ok = False  # Missing journal rows or a nontrade cash adjustment.
 
     if not accounting_ok:
+        for fill in recent_fills:
+            fill["realized_pnl_usd"] = None
+        if latest is not None:
+            latest["realized_pnl_usd"] = None
         realized_value = None
         unrealized = None
         remaining_basis_value = None
@@ -172,6 +178,7 @@ def crypto_performance(state: dict, bars: dict, trades: list[dict]) -> dict:
         "losing_sells": losing_value,
         "recorded_trade_count": row_count,
         "last_recorded_trade": latest,
+        "recent_fills": recent_fills[-80:],
         "last_processed_action": last_decision,
         "valued_at_utc": max(last_price_times.values(), default=state.get("last_bar")),
         "valuation_note": "Based on the last CONFIRMED bot candles, not the separately refreshed preview price. Net P&L includes virtual transaction costs and any unrealized mark-to-market changes. No real money.",
