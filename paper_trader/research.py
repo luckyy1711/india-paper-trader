@@ -306,10 +306,10 @@ def backtest_strategy(
                 target_weights = {
                     symbol: (0.075 if scores[symbol] is None else
                              0.075 if float(scores[symbol]) / best < 0.40 else
-                             0.15 if float(scores[symbol]) / best < 0.75 else 0.25)
+                             0.15 if float(scores[symbol]) / best < 0.75 else 0.50)
                     for symbol in valid_targets
                 }
-        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier, target_weights=target_weights))
+        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier, target_weights=target_weights, research_position_cap=0.50 if target_weights is not None else None))
         nav = mark_to_market(state, closes)["equity"]
         equity_points.append({"date": fill_date, "equity": nav})
         record_session(fill_date)
