@@ -15,7 +15,28 @@
  function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||'null');return s&&typeof s.cash==='number'&&s.positions&&Array.isArray(s.trades)?s:null}catch{return null}}
  function save(s){localStorage.setItem(KEY,JSON.stringify(s))}
  function sma(a,n){return a.slice(-n).reduce((x,y)=>x+y,0)/n}
- function decide(bars){if(bars.length<55)return false;const a=bars.map(x=>x.close);return a.at(-1)>sma(a,20)&&sma(a,20)>sma(a,50)}
+ function checks(bars){
+   if(!bars||bars.length<50)return null;
+   const a=bars.map(x=>x.close);
+   const price=a.at(-1),ma20=sma(a,20),ma50=sma(a,50);
+   return {price,ma20,ma50,above20:price>ma20,trend:ma20>ma50};
+ }
+ function decide(bars){const c=checks(bars);return Boolean(c&&c.above20&&c.trend)}
+ function renderSignal(p,s){
+   const area=$('minute-signals');
+   if(!area)return;
+   const lines=P.map(pair=>{
+     const label=pair==='BTCUSDT'?'Bitcoin':'Ethereum';
+     const v=checks(history[pair]);
+     if(!v)return label+': awaiting enough completed 1-minute candles';
+     const holding=Boolean(s?.positions?.[pair]);
+     const pass=v.above20&&v.trend;
+     const labelState=!online?'FEED UNAVAILABLE':s?.locked?'RISK LOCK':pass?(holding?'HOLD · BUY conditions remain met':'BUY SETUP · candidate, no executed order yet'):(holding?'SELL SETUP · trend broken':'WAIT · trend filter not met');
+     const m=val=>cash(val);
+     return label+' · '+labelState+'\n  Latest completed close '+m(v.price)+' | SMA20 '+m(v.ma20)+' | SMA50 '+m(v.ma50)+'\n  '+(v.above20?'✓':'✗')+' Close above SMA20 ('+(v.above20?'pass':'fail')+')  ·  '+(v.trend?'✓':'✗')+' SMA20 above SMA50 ('+(v.trend?'pass':'fail')+')';
+   });
+   area.textContent=lines.join('\n\n');
+ }
  function equity(s){return s.cash+P.reduce((sum,p)=>sum+(s.positions[p]||0)*(live[p]||0),0)}
  function record(s,action,p,qty,price,min,reason){s.trades.push({action,p,qty,price,min,reason});s.trades=s.trades.slice(-300)}
  function sell(s,p,price,min,reason){const qty=s.positions[p]||0;if(!qty)return;const exec=price*(1-SLIP);s.cash+=qty*exec*(1-FEE);delete s.positions[p];record(s,'SELL',p,qty,exec,min,reason)}
@@ -73,6 +94,7 @@
    $('minute-price').textContent=live[selected]?cash(live[selected]):'Unavailable';
    $('minute-latest').textContent=lastFetch?'Last price refresh '+new Date(lastFetch).toLocaleTimeString():'Waiting for market data';
    $('minute-decision').textContent=latestDecision;
+   renderSignal(selected,s);
    const rows=on?s.trades.slice(-8).reverse():[];
    $('minute-ledger').textContent=rows.length?rows.map(x=>dateString(x.min)+' '+x.action+' '+x.p+' '+x.qty.toFixed(6)+' @ '+cash(x.price)).join('\n'):'No 1-minute virtual trades yet.';
  }
