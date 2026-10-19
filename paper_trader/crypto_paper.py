@@ -207,7 +207,12 @@ def run_once():
         if age > 2 * 3600:
             prior = None
             print("Skipped stale pending signal after missed hourly runs")
-    events = rebalance(state, prior.get("targets", []) if prior else [], prices, bar_time)
+    # No pending signal means HOLD, not SELL. Especially important after a model switch
+    # or missed timer run: do not liquidate holdings merely because a signal expired.
+    if prior is not None or state["risk_locked"]:
+        events = rebalance(state, prior.get("targets", []) if prior else [], prices, bar_time)
+    else:
+        events = []
     equity = nav(state, prices)
     state["peak_equity"] = max(float(state["peak_equity"]), equity)
     if equity <= state["peak_equity"] * (1 - MAX_DRAWDOWN):
