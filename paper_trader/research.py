@@ -295,7 +295,21 @@ def backtest_strategy(
             record_session(fill_date)
             continue
 
-        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier))
+        # Research-only sizing: higher risk-adjusted momentum earns more capital,
+        # but no stock can exceed the existing 25% cap. This is not a probability forecast.
+        target_weights = None
+        if strategy_name == "nifty_regime_momentum_126":
+            scores = {symbol: score_symbol(prefix_data[symbol], strategy_name) for symbol in valid_targets}
+            valid_scores = [float(v) for v in scores.values() if v is not None and isfinite(float(v)) and float(v) > 0]
+            if valid_scores:
+                best = max(valid_scores)
+                target_weights = {
+                    symbol: (0.075 if scores[symbol] is None else
+                             0.075 if float(scores[symbol]) / best < 0.40 else
+                             0.15 if float(scores[symbol]) / best < 0.75 else 0.25)
+                    for symbol in valid_targets
+                }
+        trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier, target_weights=target_weights))
         nav = mark_to_market(state, closes)["equity"]
         equity_points.append({"date": fill_date, "equity": nav})
         record_session(fill_date)
