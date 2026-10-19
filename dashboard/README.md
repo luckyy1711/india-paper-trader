@@ -25,3 +25,7 @@ The paper-trader workflow also has a `validate_only` mode that runs tests withou
 ## Important data warning
 
 The page reads the latest `data/research.json` and displays data-coverage warnings when the downloaded universe or benchmark history is incomplete. Always check the report's exact date coverage, because a scheduled run can be blocked by provider delays or missing tickers. The TradingView chart is an external market widget and is not the data feed used by the bot. This dashboard is read-only and cannot place orders.
+
+## Local cached minute chart
+
+Run `python -m paper_trader.paper_chart`, then `python -m paper_trader.intraday_feed --port 8080` from the repository root and open `http://127.0.0.1:8080/dashboard/paper.html`. The 1-minute tab reads a localhost-only endpoint once per second, backed by at most one unofficial Yahoo fetch per symbol per minute. Candles and displayed timestamps are never fabricated. Yahoo data can be delayed/unavailable; the feed is **not** true NSE real time. Daily paper signal generation and next-open fills are unchanged. The static host can show only stored daily candles.
