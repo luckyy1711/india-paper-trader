@@ -9,3 +9,7 @@ venv/
 
 # Local pre-migration crypto state backups (do not commit to remote)
 data/crypto_state.hourly-backup-*.json
+
+# Archived paper-trading reset histories (local-only, never commit)
+data/crypto_reset_backups/
+data/crypto_trades.csv.reset-tmp
