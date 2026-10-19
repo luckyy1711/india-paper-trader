@@ -277,7 +277,7 @@ function showPortfolio(){
   $('cash-bar').style.width=cashWeight+'%';$('asset-bar').style.width=investedWeight+'%';
   const recent=Array.isArray(state.last_fills)?state.last_fills:[];
   const side=recent.some(t=>t.side==='BUY')?'BUY':recent.some(t=>t.side==='SELL')?'SELL':null;
-  const action=side||(p.last_processed_action==='HOLD'?'HOLD':'WAITING');
+  const action=side||(state.last_bar && p.last_processed_action==='HOLD'?'HOLD':'WAITING');
   $('latest-action').className='action-chip '+(side?side.toLowerCase():'hold');
   $('latest-action').textContent=(side==='BUY'?'▲ ':side==='SELL'?'▼ ':'● ')+action+' · LAST BOT CANDLE';
   const t=p.last_recorded_trade;
