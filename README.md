@@ -4,6 +4,49 @@ A free-first, scheduled **paper-trading experiment** for Indian equities. The fi
 
 **Paper trading only.** There is no broker integration, no real-money order code, no leverage, and no broker credentials. Do not add broker secrets to this repository.
 
+## Browser-only GitHub deployment (no localhost required)
+
+All cloud workflows are in this repository. To enable the automated schedules,
+merge the `feature/open-source-quant-models` branch into the repository's **default
+branch (`main`)** using its pull request. GitHub Actions cron triggers run from
+the default branch only, and may be delayed or skipped.
+
+1. Open **Settings → Actions → General** and allow GitHub Actions to run. Under
+   Workflow permissions choose **Read and write permissions** so virtual
+   portfolio state can be committed back to the repository.
+2. Open **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+   If Pages is unavailable on your repository plan/visibility, hosting the
+   dashboard there is not possible until your GitHub Pages eligibility changes.
+3. Open **Actions → Crypto Paper Trader (Cloud) → Run workflow** and choose
+   `start_btc_now` (or wait for the next scheduled hourly run). The first
+   run explicitly starts a **5% / $50 virtual BTC** position using the latest
+   confirmed hourly market close, if a data provider is reachable. It cannot
+   place a real crypto order. If a crypto portfolio already exists, use
+   `paper_once` instead. Hourly runs automatically bootstrap once if no
+   crypto state exists.
+4. Open **Actions → Publish Paper Dashboards (GitHub Pages)** to verify
+   deployment. The expected URL, *only after successful deployment*, is
+   `https://luckyy1711.github.io/india-paper-trader/dashboard/`.
+   The sidebar links to both stock and crypto terminals.
+
+The existing **India Paper Trader** workflow continues to run on weekday
+sessions and now saves `data/paper_chart.json` for the stock terminal.
+The crypto workflow runs hourly at approximately minute 13 UTC and saves
+`data/crypto_state.json`, `data/crypto_trades.csv`, and
+`data/crypto_chart.json`. A commit triggers a Pages refresh. GitHub Actions
+is **not** a real-time server: schedules, market feeds, and deployment can be
+delayed or fail. Both trading engines remain paper-only. The crypto model
+uses Binance BTC/USDT or ETH/USDT as an approximate USD quote when available,
+otherwise public Coinbase USD or Yahoo USD candles. The USD/USDT peg is not
+guaranteed.
+
+**Privacy:** The published Pages site is generally accessible publicly, even
+if the source repository is private. It includes portfolio snapshots and
+simulated trade history; never include passwords, API keys, personal details,
+or other secrets in published files. Review GitHub Actions and Pages billing
+and visibility before enabling. Do not publish private portfolio data without
+understanding this tradeoff.
+
 ## What it does
 
 - Starts with ₹10,000 in virtual cash.
