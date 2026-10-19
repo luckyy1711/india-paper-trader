@@ -7,6 +7,8 @@ import statistics
 from datetime import date
 from typing import Any
 
+from .indicators import confirmation_reason, indicator_snapshot
+
 from .config import (
     INITIAL_CASH,
     MAX_DRAWDOWN,
@@ -113,6 +115,11 @@ def score_symbol(rows: list[dict[str, Any]], strategy_name: str) -> float | None
     volatility = statistics.pstdev(returns) * math.sqrt(252)
     if not math.isfinite(volatility) or volatility <= PRICE_EPSILON:
         return None
+    # Indicator confirmation is opt-in per strategy. Do not alter established models.
+    # No intraday values or future prices enter the paper-trading decision.
+    if params.get("indicator_confirmation"):
+        if confirmation_reason(indicator_snapshot(rows)) is not None:
+            return None
     return momentum / volatility
 
 
