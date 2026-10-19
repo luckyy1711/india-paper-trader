@@ -120,6 +120,13 @@ def build_simulation_report(
             bars_by_symbol, strategy, sample_days=evaluation_sessions, cost_multiplier=float(cost_multiplier)
         )
     report["result"] = _summary(result, float(initial_cash))
+    if result.get("status") == "ok" and "replay_equity_points" in result:
+        scale = float(initial_cash) / INITIAL_CASH
+        report["replay"] = {
+            "equity_points": [{"date": p["date"], "equity": round(float(p["equity"]) * scale, 2)} for p in result["replay_equity_points"]],
+            "trades": [{**t, **{key: round(float(t[key]) * scale, 2) for key in ("gross_value", "costs", "cash_after") if key in t}, "quantity": t["quantity"]} for t in result["replay_trades"]],
+            "note": "Trades are generated at the original ₹10,000 sizing. Monetary totals are scaled for display when initial cash differs; share quantities remain original.",
+        }
     report["status"] = "ok" if result.get("status") == "ok" else str(result.get("status") or "simulation_incomplete")
     report["data_quality"]["message"] = (
         "Historical coverage gate passed. This does not remove survivorship bias or guarantee data accuracy."
