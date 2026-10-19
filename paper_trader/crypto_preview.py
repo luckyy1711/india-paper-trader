@@ -44,6 +44,12 @@ def parse_binance_klines(raw: list, now: datetime | None = None) -> list[dict]:
             if stamp > now.timestamp() + 60:
                 continue
             bar = _validate_bar(stamp, *(float(item[x]) for x in (1, 2, 3, 4)))
+            # Binance's index 5 is actual BASE-ASSET volume in BTC or ETH,
+            # not USD trading volume. Never synthesize a missing/invalid value.
+            if len(item) > 5:
+                amount = float(item[5])
+                if math.isfinite(amount) and amount >= 0:
+                    bar["volume"] = amount
             bar["complete"] = close_millis < now.timestamp() * 1000
             result.append(bar)
         except (TypeError, ValueError, IndexError, OverflowError):
@@ -61,6 +67,11 @@ def parse_coinbase_candles(raw: list, now: datetime | None = None) -> list[dict]
             if stamp > now.timestamp() + 60:
                 continue
             bar = _validate_bar(stamp, *(float(item[x]) for x in (3, 2, 1, 4)))
+            # Coinbase candle index 5 is also base-asset traded volume.
+            if len(item) > 5:
+                amount = float(item[5])
+                if math.isfinite(amount) and amount >= 0:
+                    bar["volume"] = amount
             bar["complete"] = stamp + 60 <= now.timestamp()
             result.append(bar)
         except (TypeError, ValueError, IndexError, OverflowError):
