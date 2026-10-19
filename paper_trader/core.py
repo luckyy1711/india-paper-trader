@@ -179,6 +179,7 @@ def execute_rebalance(
     signal_date: str,
     cost_multiplier: float = 1.0,
     target_weights: dict[str, float] | None = None,
+    research_position_cap: float | None = None,
 ) -> list[dict[str, Any]]:
     """Execute a simulated rebalance with configurable research-only cost stress."""
     if not math.isfinite(cost_multiplier) or cost_multiplier < 1.0:
@@ -186,9 +187,12 @@ def execute_rebalance(
     positions: dict[str, int] = {str(k): int(v) for k, v in state["positions"].items()}
     cash = float(state["cash"])
     targets = [] if state.get("risk_locked", False) else list(dict.fromkeys(target_symbols))[:MAX_POSITIONS]
+    effective_cap = MAX_POSITION_WEIGHT if research_position_cap is None else float(research_position_cap)
+    if not math.isfinite(effective_cap) or not MAX_POSITION_WEIGHT <= effective_cap <= 0.50:
+        raise ValueError("Research position cap must be between default and 50%")
     if target_weights is not None:
         for symbol, weight in target_weights.items():
-            if not math.isfinite(float(weight)) or not 0 <= float(weight) <= MAX_POSITION_WEIGHT:
+            if not math.isfinite(float(weight)) or not 0 <= float(weight) <= effective_cap:
                 raise ValueError(f"Invalid position weight for {symbol}")
 
     for symbol in positions:
@@ -234,7 +238,7 @@ def execute_rebalance(
         return cash + sum(qty * float(open_prices[symbol]) for symbol, qty in positions.items())
 
     nav = nav_at_open()
-    position_cap = max(0.0, nav * MAX_POSITION_WEIGHT)
+    position_cap = max(0.0, nav * effective_cap)
     # Trim existing target positions if appreciation/gaps have breached the sizing limit.
     for symbol in list(positions):
         price = float(open_prices[symbol])
