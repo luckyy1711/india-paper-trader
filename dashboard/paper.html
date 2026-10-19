@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEON / Paper Trading Terminal</title>
-<style>:root{color-scheme:dark;--bg:#080d15;--panel:#111c2a;--line:#2a4052;--green:#51e7b7;--red:#ff667f}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#e8f1fa;font:14px system-ui}main{max-width:1300px;margin:auto;padding:20px}h1{font-size:28px}small,p{color:#98abc0}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}select,button{background:#1a3040;color:#fff;border:1px solid #395367;border-radius:7px;padding:8px}canvas{display:block;width:100%;height:430px}#rsi{height:125px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.value{font-size:24px;font-weight:700}a{color:var(--green)}.green{color:var(--green)}.red{color:var(--red)}table{border-collapse:collapse;width:100%}td,th{padding:8px;text-align:left;border-bottom:1px solid var(--line)}</style></head><body><main>
+<style>:root{color-scheme:dark;--bg:#080d15;--panel:#111c2a;--line:#2a4052;--green:#51e7b7;--red:#ff667f}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#e8f1fa;font:14px system-ui}main{max-width:1300px;margin:auto;padding:20px}h1{font-size:28px}small,p{color:#98abc0}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}select,button{background:#1a3040;color:#fff;border:1px solid #395367;border-radius:7px;padding:8px}canvas{display:block;width:100%;height:430px}#rsi{height:125px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.value{font-size:24px;font-weight:700}a{color:var(--green)}.green{color:var(--green)}.red{color:var(--red)}table{border-collapse:collapse;width:100%}td,th{padding:8px;text-align:left;border-bottom:1px solid var(--line)}.tiny{font-size:12px;color:#98abc0}.details{font-size:13px;line-height:1.6}.tablewrap{overflow-x:auto}.detailrow{padding:10px 0;border-bottom:1px solid #2a4052}.detailrow:last-child{border:0}th{font-size:12px;color:#afc4d8;white-space:nowrap}td{font-size:13px}.warning{color:#ffcc8a}#comparison table{min-width:680px}</style></head><body><main>
 <div class="bar" style="justify-content:space-between"><div><small>NEON / PAPER PORTFOLIO · NOT HISTORICAL REPLAY</small><h1>Trading Terminal</h1></div><a href="./">← Dashboard</a></div>
-<div class="panel"><div class="bar"><b>Model / strategy</b><select id="model"><option>Loading…</option></select><span id="modelnote"></span><button id="copycmd" type="button">Copy safe switch command</button></div><p>Choose a rule-based model to see its current candidate stocks. The price chart follows the first candidate where available. Different strategies can select the same stocks. Switching requires running the copied command in your terminal; it explicitly cancels any unfilled pending signal. No existing holdings or cash are reset, and no second signal is generated for an already processed session. LightGBM is research-only.</p><div id="modelpreview" class="panel">Choose a model to see its next-session candidate stocks.</div></div>
+<div class="panel"><div class="bar"><b>Model / strategy</b><select id="model"><option>Loading…</option></select><span id="modelnote"></span><button id="copycmd" type="button">Copy switch command (cancels pending)</button></div><p>Each model selects stocks using its own rules. The candle chart shows REAL market prices, which do not change with the model; it follows the model’s first candidate when available. Clicking copy does not activate anything: you must run the command yourself, and it cancels any unfilled pending target when switching. Cash and existing holdings remain unchanged. LightGBM is research-only.</p><div id="modelpreview" class="panel">Choose a model to see its next-session candidate stocks.</div><div id="audit" class="tiny"></div></div>
 <div class="panel grid"><div><small>Cash</small><div class="value" id="cash">—</div></div><div><small>Open positions</small><div class="value" id="positions">—</div></div><div><small>Recorded fills</small><div class="value" id="fills">—</div></div><div><small>Risk lock</small><div class="value" id="lock">—</div></div></div>
 <div class="panel"><div class="bar"><b>Actual market candles</b><select id="symbol"></select><label><input type="checkbox" id="ema" checked> EMA 20/50</label><label><input type="checkbox" id="showrsi" checked> RSI 14</label><span id="price"></span></div><canvas id="chart"></canvas><canvas id="rsi"></canvas><p><strong class="green">▲ BUY</strong> = bot purchased virtual shares at that session’s opening price. <strong class="red">▼ SELL</strong> = bot sold virtual shares. No marker means no completed trade. Yellow EMA 20 tracks the shorter trend; blue EMA 50 tracks the longer trend. RSI is momentum: above 70 can mean overbought, below 30 can mean oversold; neither guarantees a reversal.</p><p>Signals are calculated from daily closing data, with possible fills at the next eligible opening price. Yahoo data is delayed, not streaming. A pending stock is <em>not</em> a BUY.</p><div id="pending" class="panel"></div></div>
+<div class="panel"><h3>Side-by-side model research</h3><p class="tiny">These are old historical simulated strategy results, NOT your ₹10,000 live paper portfolio. Compare equal sample windows; returns are not guaranteed. The report is generated separately and can be older than the market chart.</p><div id="comparison"></div></div>
 <div class="panel"><h3>Recorded paper fills</h3><div id="trades"></div></div>
 <p id="message"></p></main>
 <script>
@@ -12,7 +13,34 @@
 const $=id=>document.getElementById(id),money=n=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 let data;try{const r=await fetch('../data/paper_chart.json?x='+Date.now());if(!r.ok)throw Error('snapshot missing');data=await r.json()}catch(e){$('message').textContent='Run python -m paper_trader.paper_chart, then refresh this page. '+e.message;return}
 $('pending').textContent='Waiting / pending: '+((data.state.pending_target||{}).target_symbols||[]).join(', ')+' · These are proposed next-session targets, not completed trades.';$('cash').textContent=money(data.state.cash);$('positions').textContent=Object.keys(data.state.positions||{}).length;$('fills').textContent=data.trades.length;$('lock').textContent=data.state.risk_locked?'LOCKED':'OFF';
-const modelNames=['nifty_regime_momentum_126','trend_momentum_126','medium_momentum_63','ma_crossover_50_200','relative_strength_12_1','dual_momentum_6_12','lightgbm_relative_alpha (open-source ML research)'];$('model').innerHTML='';modelNames.forEach(s=>{const o=document.createElement('option');o.textContent=s;o.value=s;$('model').appendChild(o)});function showModel(){const name=$('model').value;const active=data.active_strategy||'unknown';const preview=(data.model_signals||{})[name];$('modelnote').textContent='Active: '+active;const targets=preview?.targets||[];$('modelpreview').textContent=name.startsWith('lightgbm')?'LightGBM research-only: no daily executable signals.':preview?.status==='ok'?(targets.length?'Candidate stocks at latest available close: '+targets.join(', '):'No qualifying stocks in the latest snapshot; the strategy would prefer cash.')+' This is a preview, NOT an executed trade or guaranteed next-session order.':'Preview unavailable. Regenerate data/paper_chart.json.'}
+const modelNames=['nifty_regime_momentum_126','trend_momentum_126','medium_momentum_63','ma_crossover_50_200','relative_strength_12_1','dual_momentum_6_12','lightgbm_relative_alpha (open-source ML research)'];$('model').innerHTML='';modelNames.forEach(s=>{const o=document.createElement('option');o.textContent=s;o.value=s;$('model').appendChild(o)});function showModel(){
+ const name=$('model').value,preview=(data.model_signals||{})[name],holder=$('modelpreview');
+ $('modelnote').textContent='Active for future signals: '+(data.active_strategy||'unknown');
+ holder.replaceChildren();
+ function line(text,cls){const node=document.createElement('div');node.className=cls||'details';node.textContent=text;holder.appendChild(node);return node}
+ if(name.startsWith('lightgbm')){line('LightGBM: historical ML research only. No daily paper signal or activation is supported.','warning');return}
+ if(!preview){line('No model preview in snapshot. Run python -m paper_trader.paper_chart to regenerate.');return}
+ line('Latest available benchmark candle: '+(preview.as_of||'unknown')+' · '+preview.coverage+' / '+preview.required_coverage+' current stock histories','tiny');
+ if(preview.status!=='ok'){line('SIGNALS WITHHELD: '+(preview.reason||preview.status),'warning');return}
+ if(preview.market_filter_enabled){
+  line('Nifty regime gate: '+(preview.market_filter_passed?'PASS':'FAIL')+
+   ' · Nifty close '+(preview.index_close??'—')+' vs '+(preview.index_trend_sma??'—')+'-point trend-average value','details');
+ }
+ line((preview.targets||[]).length?'MODEL CANDIDATES: '+preview.targets.join(', '):'MODEL CANDIDATES: none (stay in virtual cash)','details');
+ if(preview.reason)line(preview.reason,'warning');
+ for(const item of preview.details||[]){
+  const box=document.createElement('div');box.className='detailrow';holder.appendChild(box);
+  const a=document.createElement('b');a.textContent='✓ '+item.symbol+' · score '+item.score;box.appendChild(a);
+  const b=document.createElement('div');b.className='tiny';
+  b.textContent='Last close ₹'+item.close+' | SMA'+item.trend_window+' ₹'+item.trend_sma+
+   ' | momentum '+item.momentum_pct+'% | '+item.reason;box.appendChild(b);
+ }
+ if((preview.rejected_examples||[]).length){
+  line('Examples of stocks the model rejected:','tiny');
+  for(const x of preview.rejected_examples)line('✕ '+x.symbol+': '+x.reason,'tiny');
+ }
+ line('These are CLOSE-BASED CANDIDATES only. A BUY label appears on the price chart ONLY after a recorded virtual fill at a later eligible opening price. Scores rank risk-adjusted momentum, not a probability of profit.','tiny');
+}
 $('model').value=data.active_strategy||modelNames[0];$('model').onchange=showModel;showModel();
 $('copycmd').onclick=async()=>{const name=$('model').value;if(name.startsWith('lightgbm')){$('modelnote').textContent='LightGBM is research-only; no safe daily activation available.';return}const command='python -m paper_trader.model_select --set '+name+' --cancel-pending';try{await navigator.clipboard.writeText(command);$('modelnote').textContent='Copied: '+command}catch(e){$('modelnote').textContent='Run in terminal: '+command}};
 
@@ -25,6 +53,31 @@ if($('ema').checked)for(const [n,color] of [[20,'#f3c66e'],[50,'#69a7ff']]){cons
 for(const t of data.trades){if(t.symbol!==sym)continue;const i=rows.findIndex(p=>p.date===t.date);if(i<0)continue;const x=left+(i+.5)*step;c.fillStyle=t.side==='BUY'?'#51e7b7':'#ff667f';c.font='bold 12px system-ui';c.fillText(t.side==='BUY'?'▲ BUY':'▼ SELL',x-16,t.side==='BUY'?y(rows[i].low)+17:y(rows[i].high)-12)}
 $('price').textContent=rows.at(-1).date+' · '+money(rows.at(-1).close);
 $('rsi').style.display=$('showrsi').checked?'block':'none';if($('showrsi').checked){const {ctx:q,w:rw,h:rh}=setup($('rsi'));const yy=v=>rh-12-v*(rh-26)/100;q.font='12px system-ui';q.fillStyle='#98abc0';q.fillText('RSI 14',10,13);for(const v of [30,70]){q.strokeStyle='#2a4052';q.beginPath();q.moveTo(left,yy(v));q.lineTo(rw-right,yy(v));q.stroke();q.fillText(String(v),rw-right+8,yy(v)+4)}q.strokeStyle='#b99aff';q.lineWidth=2;q.beginPath();let begun=false;rsi(all).slice(-rows.length).forEach((v,i)=>{if(v===null)return;const x=left+(i+.5)*step;if(!begun){q.moveTo(x,yy(v));begun=true}else q.lineTo(x,yy(v))});q.stroke()}}
+function renderResearch(){
+ const holder=$('comparison'),r=data.research_comparison||{};holder.replaceChildren();
+ if(r.status!=='ok'){holder.textContent=r.message||'No valid historical research comparison saved.';return}
+ const meta=document.createElement('p');meta.className='tiny';meta.textContent='Research last generated: '+(r.generated_at_utc||'unknown')+' · 1 year ≈ 252 trading sessions, 3 years ≈ 756 sessions';holder.appendChild(meta);
+ const wrap=document.createElement('div');wrap.className='tablewrap';holder.appendChild(wrap);
+ const table=document.createElement('table');wrap.appendChild(table);
+ const head=document.createElement('tr');table.appendChild(head);
+ for(const title of ['Model','1y return','1y max drop','3y return','3y max drop','3y trades','3y through']){
+  const th=document.createElement('th');th.textContent=title;head.appendChild(th);
+ }
+ const fmt=v=>typeof v==='number'?v.toFixed(2)+'%':'—';
+ for(const x of r.results||[]){
+  const tr=document.createElement('tr');table.appendChild(tr);
+  const yr=x.year_1||{},y3=x.years_3||{};
+  const values=[x.strategy,fmt(yr.return_pct),fmt(yr.drawdown_pct),fmt(y3.return_pct),fmt(y3.drawdown_pct),y3.trades??'—',y3.sample_end??'—'];
+  for(let i=0;i<values.length;i++){const td=document.createElement('td');td.textContent=values[i];tr.appendChild(td)}
+ }
+ const warn=document.createElement('p');warn.className='tiny';warn.textContent=r.warning||'';holder.appendChild(warn);
+}
+renderResearch();
+const audits=(data.state.switch_audit||[]);$('audit').textContent=audits.length?
+ 'Most recent recorded model switch: '+audits.at(-1).from_strategy+' → '+audits.at(-1).to_strategy+
+ ' at '+audits.at(-1).timestamp_ist+
+ (audits.at(-1).cancelled_pending?' · CANCELLED unfilled targets: '+audits.at(-1).cancelled_pending.target_symbols.join(', '):' · no pending target cancelled')
+ :'No model-switch audit events recorded yet.';
 const originalShowModel=showModel;showModel=function(){originalShowModel();const preview=(data.model_signals||{})[$('model').value];const first=(preview?.targets||[]).find(s=>symbols.includes(s));if(first){$('symbol').value=first;draw()}};$('model').onchange=showModel;showModel();$('symbol').onchange=draw;$('ema').onchange=draw;$('showrsi').onchange=draw;window.addEventListener('resize',draw);draw();
 $('trades').innerHTML=data.trades.length?'<table><tr><th>Date</th><th>Side</th><th>Stock</th><th>Quantity</th><th>Price</th></tr>'+data.trades.slice(-40).reverse().map(t=>'<tr><td>'+t.date+'</td><td class="'+(t.side==='BUY'?'green':'red')+'">'+t.side+'</td><td>'+t.symbol+'</td><td>'+t.quantity+'</td><td>'+money(t.price)+'</td></tr>').join('')+'</table>':'No paper fills recorded yet. Pending signals are not executed trades.';
 })();
