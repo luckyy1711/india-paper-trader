@@ -25,9 +25,9 @@ class CryptoChartUIStaticTests(unittest.TestCase):
     def test_all_dashboard_control_ids_are_present_and_unique(self):
         html = HTML.read_text(encoding="utf-8")
         javascript = JS.read_text(encoding="utf-8")
-        ids = re.findall(r'\\bid="([^"]+)"', html)
+        ids = re.findall(r'\bid="([^"]+)"', html)
         self.assertEqual(len(ids), len(set(ids)), "Duplicate DOM id in crypto dashboard")
-        referenced = set(re.findall(r"\\$\\('([^']+)'\\)", javascript))
+        referenced = set(re.findall(r"\$\('([^']+)'\)", javascript))
         self.assertTrue(referenced)
         self.assertFalse(referenced.difference(ids), "Chart JS references missing controls")
 
