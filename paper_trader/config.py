@@ -33,4 +33,11 @@ STRATEGIES = {
         "trend_window": 200, "momentum_window": 126, "filter": "trend",
         "market_regime_filter": True, "market_regime_window": 200,
     },
+    # Optional research/paper model: daily trend + index regime with multiple confirmations.
+    # Existing active portfolios do not switch automatically.
+    "confirmed_regime_momentum_126": {
+        "trend_window": 200, "momentum_window": 126, "filter": "trend",
+        "market_regime_filter": True, "market_regime_window": 200,
+        "indicator_confirmation": True,
+    },
 }
