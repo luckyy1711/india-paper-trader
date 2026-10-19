@@ -31,7 +31,7 @@ the default branch only, and may be delayed or skipped.
 
 The existing **India Paper Trader** workflow continues to run on weekday
 sessions and now saves `data/paper_chart.json` for the stock terminal.
-The crypto workflow runs hourly at approximately minute 13 UTC and saves
+The historical crypto cloud workflow originally ran hourly. On the feature branch, automatic crypto scheduling is now deliberately disabled; minute paper trading runs on your own Linux host. Explicit cloud manual runs can save
 `data/crypto_state.json`, `data/crypto_trades.csv`, and
 `data/crypto_chart.json`. A commit triggers a Pages refresh. GitHub Actions
 is **not** a real-time server: schedules, market feeds, and deployment can be
@@ -198,7 +198,7 @@ python -m paper_trader.model_select --set confirmed_regime_momentum_126
 
 If the command refuses because of unfilled pending signals, review them before deciding whether to add `--cancel-pending` (which removes those unfilled targets). The new rule has not been established to outperform earlier strategies. Run separate historical and walk-forward comparisons before relying on it. Local model selections do not synchronize themselves to a separately scheduled GitHub Actions portfolio.
 
-## BTC / ETH chart that updates while the hourly bot runs
+## BTC / ETH preview chart (independent of the minute trading bot)
 
 The `dashboard/crypto.html` chart now offers a **read-only 1-minute preview** alongside saved 1-hour paper candles. Run the localhost preview server to use it:
 
@@ -210,6 +210,26 @@ python -m paper_trader.intraday_feed --port 8080
 
 Open `http://127.0.0.1:8080/dashboard/crypto.html`. Stop an older server that occupies port 8080 before launching this command. The browser checks the local cache **every second**, while the backend queries public Binance BTCUSDT/ETHUSDT 1-minute OHLC at most **once per symbol per 10 seconds**; Coinbase USD 1-minute candles are a fallback. The price only changes when the actual provider data changes. The forming current minute candle is labeled and may change; stale/outage states are clearly marked. This is **near-live public exchange data, not guaranteed real-time tick data or synchronized virtual fills**. There are no fake ticks or interpolated candles.
 
-Portfolio cash, holdings, EMA/RSI strategy decisions and actual virtual fills remain saved by `paper_trader.crypto_paper` only after its independently scheduled **hourly** runs. The dashboard reloads that *existing* snapshot every 15 seconds but **never starts the bot**, creates trades, submits exchange orders, edits state or shifts its next decision time. The chart shows recorded fills on the 1-hour view; the 1-minute market preview is informational. Note that Binance USDT and Coinbase USD prices differ slightly.
+Portfolio cash, holdings, EMA/RSI strategy decisions and virtual fills are saved by the **independently running** paper-trading engine. After activating the 1-minute strategy, this is `paper_trader.crypto_minute --loop` instead of the original hourly `crypto_paper` runner. The dashboard reloads that *existing* snapshot every 15 seconds but **never starts the bot**, creates trades, submits exchange orders, edits state or shifts its next decision time. The chart shows recorded fills on the **Saved paper fills** view, which becomes 1-minute after migration. On the live 1-minute preview, recorded fills can also appear when timestamps overlap; live prices and the saved paper ledger have distinct update clocks. Note that Binance USDT and Coinbase USD prices differ slightly.
 
-If you have hourly trading running in another terminal, **leave it running** when you restart the separate chart server. Never erase or reset `data/crypto_state.json` just to refresh the graph. A local bot and the GitHub cloud scheduler maintain different portfolios unless explicitly synchronized; avoid treating them as one account.
+When upgrading to the minute trading bot, **stop the old hourly shell loop (Ctrl+C in its terminal)** before starting the minute runner. Never erase or reset `data/crypto_state.json` just to refresh the graph. A local bot and the GitHub cloud scheduler maintain different portfolios unless explicitly synchronized; avoid treating them as one account.
+
+## BTC/ETH: real 1-minute paper decision cadence (local machine)
+
+The new `paper_trader.crypto_minute` engine **actually evaluates and updates the virtual portfolio once per eligible completed 1-minute candle**. It uses BTC/ETH public Binance minute OHLC or Coinbase minute OHLC fallback, checks both feeds for aligned timestamps, requires 60 consecutive confirmed bars and a recent fully closed minute, and **refuses** to create fills from delayed, partial, missing, stale, or mismatched data. The trading engine never reads forming candles or the moving dashboard API.
+
+* **Before switching:** Stop the old `crypto_paper` hourly terminal loop using Ctrl+C. Only one local crypto engine should run against your account at once. Update code without resetting `data/crypto_state.json` or `data/crypto_trades.csv`.
+* Activate virtual environment; run offline tests with `python -m unittest discover -s tests -v`, then start the long-lived local runner:
+  ```bash
+  cd ~/india-paper-trader
+  source .venv/bin/activate
+  python -m paper_trader.crypto_minute --loop
+  ```
+* This loop **checks for a new completed 1-minute candle every 15 seconds**, processing at most one decision per distinct minute. The initial run **preserves your virtual cash, BTC/ETH holdings, entry prices, risk lock, and filled-trade ledger**. It saves a timestamped backup of the old hourly state in `data/` and **cancels only the unfilled legacy hourly target**. The original hourly `crypto_paper` runner refuses execution once the portfolio is converted.
+* The first confirmed minute after conversion establishes a new *pending target*, not a forced BUY. On the **following consecutive completed minute**, the previous signal can cause a simulated BUY/SELL at that minute's observed close plus the existing 0.2% fee and 0.1% adverse slippage. Each minute may instead HOLD. If a minute is missed, its old pending order expires rather than filling at a later price. Existing 10% drawdown lock remains in force.
+* This is **EMA20/EMA50 + RSI14 on one-minute candles**. The old `momentum_24h` selector cannot be silently reinterpreted as a 24-minute model; minute conversion requires `ema_rsi`. Because of the extremely short timeframe and simulated 0.3%-per-side costs, many minute trades would rapidly lose virtual money. No profitability claim is made. A confirmed minute close is **not** an executable exchange fill price, and there is no broker connectivity.
+* `python -m paper_trader.crypto_minute --status` reads the saved account without trading. The existing dashboard at `http://127.0.0.1:8081/dashboard/crypto.html` reloads saved fills every 15 seconds when the separate local chart server is running. Choose **Saved paper fills** to see minute trade markers after conversion or **1m preview** for exchange prices.
+* **Cloud:** The feature branch removes the old automatic hourly crypto cloud schedule because GitHub Actions cannot reliably execute every single minute. A workflow still on the repository's **default branch** may have its own hourly schedule/state until separately changed; this laptop's portfolio does **not** automatically synchronize with GitHub's other checkout. Never combine results from different portfolios or run two local engines on the same state.
+* The minute runner needs a powered, awake laptop, a working network and open terminal (or an independently configured Linux service). Closing the lid/suspending the machine pauses the runner. The local public-minute feed is not guaranteed tick-streaming.
+
+Run only one **local** crypto trading runner; the dashboard server is read-only and can remain open simultaneously.
