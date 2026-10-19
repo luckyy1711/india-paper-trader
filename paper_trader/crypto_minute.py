@@ -163,6 +163,7 @@ def process_minute(state: dict, bars: dict, sources: dict, bar_time: str) -> dic
     account.save_json(account.STATE, state)
     journal_missing_fills(events)
     account.export_chart(state, bars, decisions, sources)
+    performance = account.crypto_performance(state, bars, account.trade_history())
     return {
         "status": "processed",
         "minute_utc": bar_time,
@@ -170,6 +171,14 @@ def process_minute(state: dict, bars: dict, sources: dict, bar_time: str) -> dic
         "model": state["model"],
         "virtual_equity_usd": round(equity, 2),
         "virtual_cash_usd": round(state["cash"], 2),
+        "initial_virtual_capital_usd": round(performance["initial_capital_usd"], 2),
+        "open_holdings_value_usd": round(performance["holdings_market_value_usd"], 2),
+        "net_paper_profit_usd": round(performance["net_pnl_usd"], 2),
+        "net_paper_return_pct": round(performance["net_return_pct"], 3),
+        "realized_paper_profit_usd": (
+            round(performance["realized_pnl_usd"], 2)
+            if performance["realized_pnl_usd"] is not None else None
+        ),
         "virtual_fills": events,
         "next_minute_targets": state["pending"],
         "risk_locked": state["risk_locked"],
