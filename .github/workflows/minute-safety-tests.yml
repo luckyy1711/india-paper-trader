@@ -8,6 +8,9 @@ on:
       - 'paper_trader/crypto_minute.py'
       - 'paper_trader/crypto_paper.py'
       - 'paper_trader/crypto_preview.py'
+      - 'paper_trader/crypto_metrics.py'
+      - 'dashboard/crypto.html'
+      - 'dashboard/crypto-chart.js'
       - 'tests/test_crypto_*.py'
       - '.github/workflows/minute-safety-tests.yml'
   workflow_dispatch:
