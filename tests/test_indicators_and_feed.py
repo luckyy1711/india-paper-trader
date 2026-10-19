@@ -86,7 +86,8 @@ class IndicatorsTests(unittest.TestCase):
         result = _symbol_reason(rows, "confirmed_regime_momentum_126",
                                 score_symbol(rows, "confirmed_regime_momentum_126"))
         self.assertIn("indicators", result)
-        self.assertIn("RSI14", result["reason"].upper().replace("RSI14", "RSI14") if "RSI14" in result["reason"] else "RSI14")
+        self.assertTrue(result["reason"])
+        self.assertIsNotNone(result["indicators"])
 
 
 class IntradayCacheTests(unittest.TestCase):
@@ -96,7 +97,7 @@ class IntradayCacheTests(unittest.TestCase):
             calls.append(symbol)
             return [{"date": "2026-10-19T09:16+05:30", "close": 101.0}]
         cache = QuoteCache(fetch_fn=provider, ttl=60)
-        with patch("paper_trader.intraday_feed.time.monotonic", side_effect=[0, 0, 0, 1, 59, 59, 61, 61, 61]):
+        with patch("paper_trader.intraday_feed.time.monotonic", side_effect=[0, 0, 0, 1, 1, 59, 59, 61, 61, 61]):
             a = cache.get("RELIANCE")
             b = cache.get("RELIANCE")
             c = cache.get("RELIANCE")
