@@ -197,3 +197,19 @@ python -m paper_trader.model_select --set confirmed_regime_momentum_126
 ```
 
 If the command refuses because of unfilled pending signals, review them before deciding whether to add `--cancel-pending` (which removes those unfilled targets). The new rule has not been established to outperform earlier strategies. Run separate historical and walk-forward comparisons before relying on it. Local model selections do not synchronize themselves to a separately scheduled GitHub Actions portfolio.
+
+## BTC / ETH chart that updates while the hourly bot runs
+
+The `dashboard/crypto.html` chart now offers a **read-only 1-minute preview** alongside saved 1-hour paper candles. Run the localhost preview server to use it:
+
+```bash
+cd ~/india-paper-trader
+source .venv/bin/activate
+python -m paper_trader.intraday_feed --port 8080
+```
+
+Open `http://127.0.0.1:8080/dashboard/crypto.html`. Stop an older server that occupies port 8080 before launching this command. The browser checks the local cache **every second**, while the backend queries public Binance BTCUSDT/ETHUSDT 1-minute OHLC at most **once per symbol per 10 seconds**; Coinbase USD 1-minute candles are a fallback. The price only changes when the actual provider data changes. The forming current minute candle is labeled and may change; stale/outage states are clearly marked. This is **near-live public exchange data, not guaranteed real-time tick data or synchronized virtual fills**. There are no fake ticks or interpolated candles.
+
+Portfolio cash, holdings, EMA/RSI strategy decisions and actual virtual fills remain saved by `paper_trader.crypto_paper` only after its independently scheduled **hourly** runs. The dashboard reloads that *existing* snapshot every 15 seconds but **never starts the bot**, creates trades, submits exchange orders, edits state or shifts its next decision time. The chart shows recorded fills on the 1-hour view; the 1-minute market preview is informational. Note that Binance USDT and Coinbase USD prices differ slightly.
+
+If you have hourly trading running in another terminal, **leave it running** when you restart the separate chart server. Never erase or reset `data/crypto_state.json` just to refresh the graph. A local bot and the GitHub cloud scheduler maintain different portfolios unless explicitly synchronized; avoid treating them as one account.
