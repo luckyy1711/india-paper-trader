@@ -52,7 +52,10 @@ def run_optimizer(bars, *, training_sessions=504, holdout_sessions=252):
             continue
         points = points[-(total + 1):]
         train = segment(points, 0, training_sessions)
-        holdout = segment(points, training_sessions, total)
+        # Reset virtual portfolio for independent holdout; do not inherit training lock.
+        holdout_result = backtest_strategy(bars, name, sample_days=holdout_sessions)
+        holdout_points = holdout_result.get("replay_equity_points", [])
+        holdout = segment(holdout_points, 0, len(holdout_points) - 1) if holdout_result.get("status") == "ok" else None
         if train is None or holdout is None:
             continue
         # Explicit selection criterion, fixed before viewing holdout results.
@@ -83,7 +86,7 @@ def run_optimizer(bars, *, training_sessions=504, holdout_sessions=252):
         "limitations": [
             "Only one chronological holdout; historical performance does not predict profits.",
             "The 50-stock universe may have survivorship bias.",
-            "Training and holdout share one continuous simulated portfolio state; no reset at split.",
+            "Holdout uses a separately reset virtual portfolio, avoiding inherited training risk lock.",
             "Selection uses only training metrics; holdout is reported but never used for selection.",
             "Rule-based strategies only; LightGBM omitted because training costs and evaluation differ.",
             "Trading costs and 10% drawdown lock are included by the backtest engine.",
