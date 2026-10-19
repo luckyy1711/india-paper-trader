@@ -15,12 +15,12 @@ select{border:1px solid #395367;border-radius:7px;background:#1a3040;color:#fff;
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:16px}
 .stat strong{display:block;font-size:23px;word-wrap:break-word;margin-top:5px}
 #price{font-size:23px;font-weight:700;color:var(--green)}#clock{font-variant-numeric:tabular-nums}
-#chart{display:block;width:100%;height:430px}
+/* chart size is controlled by the new terminal styles */
 .feed{border:1px solid #395367;border-radius:9px;background:#142232;padding:10px 12px;margin:12px 0;font-size:12px;line-height:1.6}
 .warning{color:#ffcf91}.ok{color:var(--green)}.bad{color:var(--red)}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}
 .tablewrap{overflow-x:auto}.small{font-size:12px}
-@media(max-width:650px){main{padding:12px}h1{font-size:22px}#chart{height:310px}#price{font-size:19px}}
+@media(max-width:650px){main{padding:12px}h1{font-size:22px}#price{font-size:19px}}
 
 .account-head{align-items:flex-start;margin-bottom:16px}
 .kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:650}
@@ -53,6 +53,37 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;bord
 td.wrap{white-space:normal;min-width:160px}
 .result-label{font-weight:750}
 @media(max-width:650px){.last-fill{border-left:0;border-top:1px solid var(--line);padding:14px 0 0}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics .stat{padding:10px}.metrics .stat strong{font-size:17px}}
+
+/* Trading terminal UI, backed by TradingView's Apache-2.0 Lightweight Charts */
+.terminal-panel{background:#0b111b;padding:0;overflow:hidden}
+.terminal-top,.terminal-footer{padding:13px 16px;background:#111e2b;border-bottom:1px solid #2b4054}
+.terminal-top>div{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.terminal-controls{margin-top:12px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.terminal-controls select,.terminal-controls button,.terminal-footer button,.drawing-rail button{background:#18293c;color:#e3edf9;border:1px solid #34516b;border-radius:5px;padding:7px 9px;cursor:pointer;font:inherit;font-size:12px}
+.terminal-controls button:hover,.terminal-footer button:hover,.drawing-rail button:hover{background:#274159;border-color:#91b7d7}
+.terminal-controls button:focus-visible,.drawing-rail button:focus-visible{outline:2px solid #51e7b7}
+.terminal-controls select:disabled{opacity:.5;cursor:not-allowed}
+.terminal-controls label{display:inline-flex;align-items:center;gap:5px;color:#b7cbe0;font-size:12px}
+.terminal-controls input{accent-color:#51e7b7}
+.chart-mast{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:11px 15px;border-bottom:1px solid #2b4054;font-size:12px;background:#111b28}
+.chart-layout{display:flex;min-height:540px}
+.chart-main{min-width:0;flex:1}
+.drawing-rail{width:47px;display:flex;flex-direction:column;gap:8px;padding:8px 5px;border-right:1px solid #2b4054;background:#111b28}
+.drawing-rail button{font-size:17px;padding:4px;height:36px}
+.drawing-rail button.active{border-color:#51e7b7;background:#1d3937;color:#51e7b7}
+#chart{height:540px;width:100%;max-height:none}
+#chart.light-chart{background:#fafcff}
+#chart-hint{padding:9px 15px;border-top:1px solid #2b4054;margin:0;font-size:12px;color:#adc0d4}
+.terminal-footer{border-top:1px solid #2b4054;border-bottom:0;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.terminal-footer .range-group{display:flex;gap:5px}
+.terminal-credit{font-size:11px;color:#9bb4cb;margin:0}
+.terminal-credit a{color:#8addc2}
+.terminal-notes{padding:0 15px 12px}
+#ohlc{font-weight:650;font-variant-numeric:tabular-nums}
+#chart-shell:fullscreen{background:#0b111b;display:flex;flex-direction:column;padding:8px;overflow:auto}
+#chart-shell:fullscreen .chart-layout{flex:1;min-height:0}
+#chart-shell:fullscreen #chart{height:calc(100vh - 310px);min-height:300px}
+@media(max-width:650px){.chart-layout{min-height:370px}#chart{height:370px}.drawing-rail{width:40px;padding:5px 3px}.terminal-top{padding:10px}.terminal-controls{gap:5px}#chart-shell:fullscreen #chart{height:calc(100vh - 260px)}}
 </style>
 </head>
 <body><main>
@@ -109,24 +140,55 @@ td.wrap{white-space:normal;min-width:160px}
  <p id="portfolio-status" class="account-note">Loading saved paper portfolio…</p>
  <p id="basis-note" class="account-note">Verified FIFO profit breakdown requires complete trade records.</p>
 </div>
-<div class="panel">
- <div class="row">
-  <label>Market <select id="symbol">
-   <option value="BTC-USD">Bitcoin · BTC/USD</option>
-   <option value="ETH-USD">Ethereum · ETH/USD</option>
-  </select></label>
-  <label>Timeframe <select id="timeframe">
-   <option value="1m">1m · public market preview</option>
-   <option value="saved">Saved paper fills · 1m after switch</option>
-  </select></label>
-  <span id="price">—</span>
+<div class="panel terminal-panel" id="chart-shell">
+ <div class="terminal-top">
+  <div>
+   <b class="muted">NEON / MARKETS</b>
+   <label>Market <select id="symbol"><option value="BTC-USD">Bitcoin / USD</option><option value="ETH-USD">Ethereum / USD</option></select></label>
+   <label>Feed <select id="timeframe"><option value="1m">Live 1-minute market preview</option><option value="saved">Saved paper fills</option></select></label>
+   <span id="price" class="green" style="font-size:18px;font-weight:750">—</span>
+  </div>
+  <div class="terminal-controls">
+   <label>Interval <select id="chart-resolution"><option value="1">1m</option><option value="3">3m</option><option value="5">5m</option><option value="15">15m</option><option value="30">30m</option><option value="60">1h</option></select></label>
+   <label>Chart type <select id="chart-kind"><option>Candles</option><option>Line</option><option>Area</option></select></label>
+   <label><input type="checkbox" id="show-ema20" checked><span style="color:#f6bf63">EMA20</span></label>
+   <label><input type="checkbox" id="show-ema50" checked><span style="color:#7ea9fb">EMA50</span></label>
+   <label><input type="checkbox" id="show-volume" checked>Volume</label>
+   <label><input type="checkbox" id="show-rsi">RSI14</label>
+   <button type="button" id="chart-zoom-in" title="Zoom in (+)">＋</button>
+   <button type="button" id="chart-zoom-out" title="Zoom out (-)">−</button>
+   <button type="button" id="chart-fit" title="Fit all data">Fit</button>
+   <button type="button" id="chart-live" title="Follow newest candle">Live ↗</button>
+   <button type="button" id="chart-theme" title="Switch theme">☾ Dark</button>
+   <button type="button" id="chart-screenshot" title="Export chart image">Save PNG</button>
+   <button type="button" id="chart-fullscreen" title="Fullscreen chart">⛶</button>
+  </div>
  </div>
- <div class="feed" id="feed-status" role="status">Connecting to localhost market preview…</div>
- <canvas id="chart" aria-label="BTC and ETH actual market candlestick graph"></canvas>
- <p class="small" id="source">Feed status will show candle time and last provider refresh.</p>
- <p class="small">The screen checks for changes every second, but its public exchange source is queried at most every 10 seconds per coin. Prices can be delayed, unchanged or unavailable. The latest <b>forming</b> 1-minute candle can change before it closes; no candles are fabricated. Binance USDT prices are an approximate USD proxy; Coinbase USD candles are used if needed.</p>
- <p class="small"><b class="green">▲ BUY</b> and <b class="red">▼ SELL</b> mark <b>recorded paper fills</b> on saved 1-minute candles after conversion. Minute decisions use only <b>completed 1-minute candles</b>; the chart's preview cannot submit trades. The simulation fills from the next completed minute, including fees and slippage. EMA20 and EMA50 on the chart are informational.</p>
- <p class="small" id="signal">The latest completed-candle strategy decision is loaded from the paper portfolio.</p>
+ <div class="chart-mast">
+  <span class="muted" id="chart-data-label">BTC / USD · Loading candles</span>
+  <span class="green" id="ohlc">Hover a candle for its prices</span>
+ </div>
+ <div class="chart-layout">
+  <div class="drawing-rail" role="toolbar" aria-label="Chart drawing tools">
+   <button type="button" data-tool="cursor" title="Crosshair / navigate (Esc)">⌖</button>
+   <button type="button" data-tool="level" title="Add horizontal price level">━</button>
+   <button type="button" data-tool="trend" title="Draw two-point trend line">╱</button>
+   <button type="button" id="clear-drawings" title="Erase drawn lines">⌫</button>
+  </div>
+  <div class="chart-main"><div id="chart" role="img" aria-label="Interactive candlestick chart for selected cryptocurrency"></div></div>
+ </div>
+ <div class="terminal-footer">
+  <div class="range-group"><button type="button" data-range="30">30m</button><button type="button" data-range="60">1h</button><button type="button" data-range="120">2h</button><button type="button" data-range="all">All</button></div>
+  <p class="terminal-credit">Powered by <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts™</a> · Open-source Apache 2.0 · IST</p>
+ </div>
+ <p id="chart-hint" aria-live="polite">Loading TradingView Lightweight Charts…</p>
+ <div class="terminal-notes">
+  <div class="feed" id="feed-status" role="status">Connecting to localhost market preview…</div>
+  <p class="small" id="source">Actual source and candle time will appear here.</p>
+  <p class="small">Drag to pan, wheel/pinch or +/- to zoom, hover for actual OHLC prices. The zoom controls and drawings are read-only and never affect your paper strategy. Larger chart intervals are aggregated only from available actual 1-minute bars; no candles are invented. The library is open-source; it is not TradingView's proprietary Advanced Charts or entire website.</p>
+  <p class="small"><b class="green">▲ BUY</b> and <b class="red">▼ SELL</b> indicate executed virtual fills from your own portfolio. Actual paper fills use the next completed minute, with fees and slippage.</p>
+  <p class="small" id="signal">Latest strategy signal appears here.</p>
+ </div>
 </div>
 <div class="panel">
  <div class="row heading"><h2>BUY / SELL history and trade profit</h2><span id="trade-count" class="kicker">— FILLS</span></div>
@@ -135,6 +197,8 @@ td.wrap{white-space:normal;min-width:160px}
 </div>
 <p class="small" id="message">Paper-only. Your BTC bot processes confirmed 1-minute candles when the separate minute runner is active. The preview server cannot place orders or change your portfolio.</p>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+<script src="crypto-chart.js"></script>
 <script>
 (()=>{
 const $=id=>document.getElementById(id);
