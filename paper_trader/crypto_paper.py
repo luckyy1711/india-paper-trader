@@ -87,6 +87,29 @@ def _binance_klines(symbol):
     raise RuntimeError(f"Binance public candles unavailable for {symbol}: {last_error}")
 
 
+def _coinbase_hourly(symbol):
+    """Unauthenticated Coinbase Exchange public hourly OHLC candles."""
+    pair = symbol.replace("-USD", "-USD")
+    url = "https://api.exchange.coinbase.com/products/" + pair + "/candles?granularity=3600"
+    request = urllib.request.Request(url, headers={"User-Agent": "NEON-PaperTrader/1.0", "Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=12) as response:
+        raw = json.loads(response.read(2_000_000).decode("utf-8"))
+    now = datetime.now(timezone.utc)
+    rows = []
+    for item in raw:
+        ts = datetime.fromtimestamp(int(item[0]), timezone.utc)
+        if ts + timedelta(hours=1, minutes=5) > now:
+            continue
+        lo, hi, op, cl = [float(item[i]) for i in (1, 2, 3, 4)]
+        if not all(math.isfinite(v) and v > 0 for v in (op, hi, lo, cl)):
+            continue
+        rows.append({"time": ts.isoformat(), "open": op, "high": hi, "low": lo, "close": cl})
+    rows.sort(key=lambda x: x["time"])
+    if len(rows) < 60:
+        raise RuntimeError("Coinbase returned insufficient completed hourly candles")
+    return rows
+
+
 def _yahoo_hourly(symbol):
     import pandas as pd
     import yfinance as yf
@@ -130,17 +153,23 @@ def download():
     sources = {}
     for symbol in SYMBOLS:
         failures = []
-        try:
-            rows = _binance_klines(symbol)
-            source = "Binance public USDT market candles (~USD proxy)"
-        except (RuntimeError, OSError, ValueError) as exc:
-            failures.append("Binance: " + str(exc))
+        rows = None
+        source = None
+        providers = (
+            (_binance_klines, "Binance public USDT candles (~USD proxy)"),
+            (_coinbase_hourly, "Coinbase Exchange public USD candles"),
+            (_yahoo_hourly, "Yahoo Finance USD candles"),
+        )
+        for fetch, label in providers:
             try:
-                rows = _yahoo_hourly(symbol)
-                source = "Yahoo Finance USD market candles"
-            except (RuntimeError, OSError, ValueError) as yahoo_exc:
-                failures.append("Yahoo: " + str(yahoo_exc))
-                raise RuntimeError(f"No crypto market data for {symbol}. Check DNS/internet access. " + "; ".join(failures)) from yahoo_exc
+                rows = fetch(symbol)
+                source = label
+                break
+            except (RuntimeError, OSError, ValueError, IndexError, TypeError, KeyError) as exc:
+                failures.append(label + ": " + str(exc))
+        if rows is None:
+            raise RuntimeError(f"No crypto market data for {symbol}; check DNS/network. " + "; ".join(failures))
+
         output[symbol] = rows
         sources[symbol] = source
     return output, sources
@@ -246,6 +275,10 @@ def run_once():
     if len(set(times.values())) != 1:
         raise RuntimeError(f"Crypto candles are not aligned: {times}; no trades")
     bar_time = next(iter(times.values()))
+    # Never paper-fill using an old candle after a provider outage.
+    if datetime.now(timezone.utc) - datetime.fromisoformat(bar_time) > timedelta(hours=3):
+        raise RuntimeError("Latest confirmed crypto bar is too old; no paper trades")
+
     prices = {s: bars[s][-1]["close"] for s in SYMBOLS}
     decisions = {s: dict(zip(("buy", "explanation"), signal(bars[s], state["model"]))) for s in SYMBOLS}
     if state.get("last_bar") == bar_time:
@@ -296,6 +329,9 @@ def start_btc_now():
     if len(set(times.values())) != 1:
         raise RuntimeError(f"Crypto candles are not aligned: {times}; no trades")
     t = next(iter(times.values()))
+    if datetime.now(timezone.utc) - datetime.fromisoformat(t) > timedelta(hours=3):
+        raise RuntimeError("Latest confirmed BTC bar is stale; cannot bootstrap")
+
     state = fresh_state()
     # A 5% virtual starting position; normal strategy takes over at the next
     # observed confirmed hourly candle. This entry is user-requested, not
