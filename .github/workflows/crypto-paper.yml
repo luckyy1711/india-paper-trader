@@ -1,25 +1,23 @@
-name: Crypto Paper Trader (Cloud)
+name: Crypto Paper Trader (Cloud Manual Only)
 
+# Deliberately no crypto hourly schedule: GitHub Actions is NOT a reliable
+# once-per-minute execution platform. Run the minute engine on a single laptop
+# or persistent host. Default-branch schedules must also be reviewed separately.
 on:
-  schedule:
-    # Hourly at :13 UTC. GitHub Actions may delay or skip scheduled runs.
-    - cron: "13 * * * *"
   workflow_dispatch:
     inputs:
       mode:
-        description: "Start first virtual BTC position or process one hourly signal"
+        description: "Choose validation or manually process one confirmed crypto minute"
         type: choice
         required: true
-        default: start_btc_now
+        default: validate_only
         options:
-          - start_btc_now
-          - paper_once
           - validate_only
+          - minute_once
 
 permissions:
   contents: write
 
-# Shares the stock/research workflow lock to avoid competing Git commits.
 concurrency:
   group: india-paper-trader-main
   cancel-in-progress: false
@@ -45,26 +43,21 @@ jobs:
       - name: Run offline safety tests
         run: python -m unittest discover -s tests -v
 
-      - name: Start first BTC virtual position
-        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'start_btc_now'
-        run: python -m paper_trader.crypto_paper --start-now
-
-      - name: Process next confirmed hourly candle
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper_once')
+      - name: Process one confirmed crypto minute (paper only)
+        if: inputs.mode == 'minute_once'
         run: |
           if [ ! -f data/crypto_state.json ]; then
-            echo "No crypto paper portfolio exists; creating requested initial 5% virtual BTC position."
-            python -m paper_trader.crypto_paper --start-now
-          else
-            python -m paper_trader.crypto_paper
+            echo "No cloud portfolio; refusing automatic bootstrap. Run a local minute portfolio instead."
+            exit 1
           fi
+          python -m paper_trader.crypto_minute
 
       - name: Validation only
-        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate_only'
+        if: inputs.mode == 'validate_only'
         run: echo "Offline tests passed; no virtual portfolio modified."
 
-      - name: Commit crypto paper portfolio and chart
-        if: success() && (github.event_name == 'schedule' || inputs.mode != 'validate_only')
+      - name: Commit explicitly requested minute portfolio and chart
+        if: success() && inputs.mode == 'minute_once'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -72,6 +65,6 @@ jobs:
             if [ -f "$file" ]; then git add -- "$file"; fi
           done
           if ! git diff --cached --quiet; then
-            git commit -m "Update hourly crypto paper portfolio [skip ci]"
+            git commit -m "Update manually requested crypto minute paper portfolio [skip ci]"
             git push
           fi
