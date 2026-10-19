@@ -38,7 +38,7 @@ class CryptoChartUIStaticTests(unittest.TestCase):
             "getVisibleLogicalRange()", "setVisibleLogicalRange(",
             "createSeriesMarkers(", "coordinateToPrice(",
             "createPriceLine(", "chart.addSeries(", "chart.removeSeries(",
-            "takeScreenshot(true)", "show-rsi", "show-volume", "EMA",
+            "takeScreenshot(true)", "show-rsi", "show-volume", "function ema(",
             "function compress(", "function render(", "NeonTradingChart",
         ):
             self.assertIn(required, javascript, required)
