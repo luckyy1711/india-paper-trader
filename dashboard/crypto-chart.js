@@ -400,7 +400,12 @@
     let aggregated=sourceMode==='1h'?normalized:compress(normalized,desiredInterval);
     const signature=[symbol,sourceMode,desiredInterval,normalized.length,
       normalized[0]?.time||0,normalized[normalized.length-1]?.time||0,
-      normalized[normalized.length-1]?.close||0,normalized[normalized.length-1]?.volume??'none',
+      normalized[normalized.length-1]?.open||0,
+      normalized[normalized.length-1]?.high||0,
+      normalized[normalized.length-1]?.low||0,
+      normalized[normalized.length-1]?.close||0,
+      normalized[normalized.length-1]?.complete?'complete':'forming',
+      normalized[normalized.length-1]?.volume??'none',
       lastTrades.length,lastTrades[lastTrades.length-1]?.time||'',
       chartKind,...['show-ema20','show-ema50','show-volume','show-rsi'].map(id=>$(id).checked)
     ].join('|');
