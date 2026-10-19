@@ -295,20 +295,48 @@ def backtest_strategy(
             record_session(fill_date)
             continue
 
-        # Research-only sizing: higher risk-adjusted momentum earns more capital,
-        # but no stock can exceed the existing 25% cap. This is not a probability forecast.
+        # Experimental, close-known multi-indicator confirmation; never claims a probability.
+        # Only applies to historical Nifty-regime research, not live paper positions.
         target_weights = None
         if strategy_name == "nifty_regime_momentum_126":
-            scores = {symbol: score_symbol(prefix_data[symbol], strategy_name) for symbol in valid_targets}
-            valid_scores = [float(v) for v in scores.values() if v is not None and isfinite(float(v)) and float(v) > 0]
-            if valid_scores:
-                best = max(valid_scores)
-                target_weights = {
-                    symbol: (0.075 if scores[symbol] is None else
-                             0.075 if float(scores[symbol]) / best < 0.40 else
-                             0.15 if float(scores[symbol]) / best < 0.75 else 0.50)
-                    for symbol in valid_targets
-                }
+            def confirmed_weight(symbol):
+                rows = prefix_data.get(symbol, [])
+                closes = [float(r["close"]) for r in rows if float(r.get("close", 0)) > 0]
+                if len(closes) < 201:
+                    return 0.0
+                latest = closes[-1]
+                ema50 = closes[0]
+                ema200 = closes[0]
+                for price in closes[1:]:
+                    ema50 += (2 / 51) * (price - ema50)
+                    ema200 += (2 / 201) * (price - ema200)
+                if not (latest > ema50 > ema200):
+                    return 0.0
+                momentum = latest / closes[-64] - 1
+                if momentum <= 0:
+                    return 0.0
+                changes = [closes[i] - closes[i - 1] for i in range(len(closes) - 14, len(closes))]
+                gain = sum(max(d, 0) for d in changes) / 14
+                loss = sum(max(-d, 0) for d in changes) / 14
+                rsi = 100 if loss == 0 else 100 - 100 / (1 + gain / loss)
+                if rsi >= 75 or rsi < 45:
+                    return 0.0
+                recent_returns = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 20, len(closes))]
+                annual_vol = statistics.pstdev(recent_returns) * sqrt(252)
+                if annual_vol > 0.55:
+                    return 0.0
+                score = score_symbol(rows, strategy_name)
+                if score is None or not isfinite(float(score)) or score <= 0:
+                    return 0.0
+                # 50% only when several indicators agree and volatility is low.
+                if momentum > 0.12 and 52 <= rsi <= 68 and annual_vol < 0.30 and latest > ema50 * 1.03:
+                    return 0.50
+                if momentum > 0.05 and 48 <= rsi <= 72 and annual_vol < 0.40:
+                    return 0.25
+                return 0.075
+
+            target_weights = {symbol: confirmed_weight(symbol) for symbol in valid_targets}
+            valid_targets = [symbol for symbol in valid_targets if target_weights[symbol] > 0]
         trades.extend(execute_rebalance(state, valid_targets, opens, fill_date, signal_date, cost_multiplier=cost_multiplier, target_weights=target_weights, research_position_cap=0.50 if target_weights is not None else None))
         nav = mark_to_market(state, closes)["equity"]
         equity_points.append({"date": fill_date, "equity": nav})
