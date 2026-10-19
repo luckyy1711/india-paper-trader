@@ -9,6 +9,8 @@ import argparse
 import csv
 import json
 import math
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -55,41 +57,93 @@ def load_state():
     return value
 
 
-def download():
+def _binance_klines(symbol):
+    """Read-only hourly klines from public market data endpoints, no credentials."""
+    pair = symbol.replace("-USD", "USDT").replace("-", "")
+    hosts = ("https://data-api.binance.vision", "https://api.binance.com")
+    last_error = None
+    for host in hosts:
+        url = host + "/api/v3/klines?symbol=" + pair + "&interval=1h&limit=500"
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "NEON-PaperTrader/1.0"})
+            with urllib.request.urlopen(request, timeout=12) as response:
+                raw = json.loads(response.read(2_000_000).decode("utf-8"))
+            now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            rows = []
+            for item in raw:
+                open_ms, close_ms = int(item[0]), int(item[6])
+                if close_ms + 5 * 60 * 1000 > now_ms:
+                    continue
+                op, hi, lo, cl = [float(item[i]) for i in (1, 2, 3, 4)]
+                if not all(math.isfinite(v) and v > 0 for v in (op, hi, lo, cl)):
+                    continue
+                rows.append({"time": datetime.fromtimestamp(open_ms / 1000, timezone.utc).isoformat(),
+                             "open": op, "high": hi, "low": lo, "close": cl})
+            if len(rows) >= 60:
+                return rows
+            last_error = "insufficient hourly candles"
+        except (OSError, ValueError, IndexError, TypeError, KeyError) as exc:
+            last_error = str(exc)
+    raise RuntimeError(f"Binance public candles unavailable for {symbol}: {last_error}")
+
+
+def _yahoo_hourly(symbol):
     import pandas as pd
     import yfinance as yf
     now = datetime.now(timezone.utc)
+    frame = yf.download(symbol, period="60d", interval="1h", auto_adjust=True,
+                        actions=False, progress=False, threads=False, timeout=12)
+    if frame is None or frame.empty:
+        raise RuntimeError("Yahoo returned empty price history")
+    if isinstance(frame.columns, pd.MultiIndex):
+        for level in range(frame.columns.nlevels):
+            if {"Open", "Close"}.issubset(set(frame.columns.get_level_values(level))):
+                frame.columns = frame.columns.get_level_values(level)
+                break
+    rows = []
+    for index, r in frame.iterrows():
+        ts = pd.Timestamp(index)
+        ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+        ts = ts.to_pydatetime()
+        if ts + timedelta(hours=1, minutes=5) > now:
+            continue
+        try:
+            o, h, l, close = [float(r[k]) for k in ("Open", "High", "Low", "Close")]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(v) and v > 0 for v in (o, h, l, close)):
+            continue
+        rows.append({"time": ts.isoformat(), "open": o, "high": h, "low": l, "close": close})
+    if len(rows) < 60:
+        raise RuntimeError("Insufficient Yahoo hourly data")
+    return rows
+
+
+def download():
+    """Prefer crypto-native public BTC/USDT and ETH/USDT candles.
+
+    USDT is treated as an approximate USD quote for the virtual USD ledger;
+    a peg deviation can cause a valuation difference. Never silently join
+    bars from multiple sources within one market series.
+    """
     output = {}
+    sources = {}
     for symbol in SYMBOLS:
-        frame = yf.download(symbol, period="60d", interval="1h", auto_adjust=True,
-                            actions=False, progress=False, threads=False, timeout=30)
-        if frame is None or frame.empty:
-            raise RuntimeError(f"No hourly crypto data for {symbol}; no trades")
-        if isinstance(frame.columns, pd.MultiIndex):
-            for level in range(frame.columns.nlevels):
-                if {"Open", "Close"}.issubset(set(frame.columns.get_level_values(level))):
-                    frame.columns = frame.columns.get_level_values(level)
-                    break
-        rows = []
-        for index, r in frame.iterrows():
-            ts = pd.Timestamp(index)
-            if ts.tzinfo is None:
-                ts = ts.tz_localize("UTC")
-            ts = ts.tz_convert("UTC").to_pydatetime()
-            # Exclude unfinished or too-recent hourly candles.
-            if ts + timedelta(hours=1, minutes=5) > now:
-                continue
+        failures = []
+        try:
+            rows = _binance_klines(symbol)
+            source = "Binance public USDT market candles (~USD proxy)"
+        except (RuntimeError, OSError, ValueError) as exc:
+            failures.append("Binance: " + str(exc))
             try:
-                o, h, l, c = [float(r[k]) for k in ("Open", "High", "Low", "Close")]
-            except (KeyError, TypeError, ValueError):
-                continue
-            if not all(math.isfinite(v) and v > 0 for v in (o, h, l, c)):
-                continue
-            rows.append({"time": ts.isoformat(), "open": o, "high": h, "low": l, "close": c})
-        if len(rows) < 60:
-            raise RuntimeError(f"Not enough confirmed hourly candles for {symbol}")
+                rows = _yahoo_hourly(symbol)
+                source = "Yahoo Finance USD market candles"
+            except (RuntimeError, OSError, ValueError) as yahoo_exc:
+                failures.append("Yahoo: " + str(yahoo_exc))
+                raise RuntimeError(f"No crypto market data for {symbol}. Check DNS/internet access. " + "; ".join(failures)) from yahoo_exc
         output[symbol] = rows
-    return output
+        sources[symbol] = source
+    return output, sources
 
 
 def rsi14(closes):
@@ -174,11 +228,11 @@ def trade_history():
         return list(csv.DictReader(f))
 
 
-def export_chart(state, bars, decisions):
+def export_chart(state, bars, decisions, sources=None):
     save_json(CHART, {
         "mode": "crypto_paper_only", "currency": "USD", "model": state["model"],
         "updated_utc": datetime.now(timezone.utc).isoformat(),
-        "state": state, "signals": decisions,
+        "state": state, "signals": decisions, "market_sources": sources or {},
         "candles": {s: rows[-160:] for s, rows in bars.items()},
         "trades": trade_history(),
         "notes": "Confirmed hourly candles, delayed Yahoo data; no broker/exchange orders.",
@@ -187,7 +241,7 @@ def export_chart(state, bars, decisions):
 
 def run_once():
     state = load_state()
-    bars = download()  # No portfolio changes if either market is unavailable.
+    bars, sources = download()  # No portfolio changes if either market is unavailable.
     times = {s: rows[-1]["time"] for s, rows in bars.items()}
     if len(set(times.values())) != 1:
         raise RuntimeError(f"Crypto candles are not aligned: {times}; no trades")
@@ -196,7 +250,7 @@ def run_once():
     decisions = {s: dict(zip(("buy", "explanation"), signal(bars[s], state["model"]))) for s in SYMBOLS}
     if state.get("last_bar") == bar_time:
         print("Already processed confirmed hour:", bar_time)
-        export_chart(state, bars, decisions)
+        export_chart(state, bars, decisions, sources)
         return
     if state.get("last_bar") and bar_time < state["last_bar"]:
         raise RuntimeError("Market data went backwards; no trades")
@@ -225,10 +279,47 @@ def run_once():
     # Persist before journal; if interrupted, no duplicated trading on rerun.
     save_json(STATE, state)
     append_trades(events)
-    export_chart(state, bars, decisions)
+    export_chart(state, bars, decisions, sources)
     print(json.dumps({"hour_utc": bar_time, "model": state["model"], "equity_usd": round(equity, 2),
-                      "cash_usd": round(state["cash"], 2), "paper_fills": events,
+                      "cash_usd": round(state["cash"], 2), "market_sources": sources, "paper_fills": events,
                       "next_hour_targets": state["pending"], "risk_locked": state["risk_locked"]}, indent=2))
+
+
+def start_btc_now():
+    """Explicitly bootstrap one small virtual BTC position on the current
+    confirmed close. Never runs on an existing portfolio or repeats a buy.
+    """
+    if STATE.exists():
+        raise RuntimeError("Existing crypto portfolio detected. --start-now cannot modify it. Use normal hourly run.")
+    bars, sources = download()
+    times = {s: rows[-1]["time"] for s, rows in bars.items()}
+    if len(set(times.values())) != 1:
+        raise RuntimeError(f"Crypto candles are not aligned: {times}; no trades")
+    t = next(iter(times.values()))
+    state = fresh_state()
+    # A 5% virtual starting position; normal strategy takes over at the next
+    # observed confirmed hourly candle. This entry is user-requested, not
+    # described as model-generated or profitable.
+    price = bars["BTC-USD"][-1]["close"] * (1 + SLIPPAGE_RATE)
+    budget = START_CASH * 0.05
+    quantity = budget / (price * (1 + FEE_RATE))
+    fee = quantity * price * FEE_RATE
+    state["positions"]["BTC-USD"] = quantity
+    state["entry_prices"]["BTC-USD"] = price
+    state["cash"] -= budget
+    state["last_bar"] = t
+    state["pending"] = {"time": t, "targets": ["BTC-USD"]}
+    event = {"time": t, "side": "BUY", "symbol": "BTC-USD",
+             "quantity": round(quantity, 8), "price": round(price, 4),
+             "fees": round(fee, 4), "reason": "User-requested 5% virtual BTC bootstrap (not a model signal)"}
+    save_json(STATE, state)
+    append_trades([event])
+    decisions = {s: dict(zip(("buy", "explanation"), signal(bars[s], state["model"]))) for s in SYMBOLS}
+    export_chart(state, bars, decisions, sources)
+    print(json.dumps({"status": "paper_started_now", "market_hour_utc": t,
+                      "virtual_cash_usd": round(state["cash"], 2),
+                      "user_requested_virtual_btc_buy": event,
+                      "note": "Not a historical fill or model recommendation; no real BTC bought."}, indent=2))
 
 
 def main():
@@ -236,7 +327,13 @@ def main():
     parser.add_argument("--set-model", choices=MODELS)
     parser.add_argument("--cancel-pending", action="store_true")
     parser.add_argument("--status", action="store_true")
+    parser.add_argument("--start-now", action="store_true", help="Start the paper portfolio now; only a conservative 5 percent BTC entry, not a guarantee of profit")
     args = parser.parse_args()
+    if args.start_now:
+        if args.set_model or args.cancel_pending or args.status:
+            parser.error("--start-now cannot be combined with other switches")
+        start_btc_now()
+        return
     if args.set_model:
         state = load_state()
         if state["risk_locked"]:
