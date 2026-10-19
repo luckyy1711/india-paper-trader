@@ -335,6 +335,8 @@ def backtest_strategy(
         "risk_lock_active_at_end": bool(state.get("risk_locked", False)),
         "post_lock_flat_sessions": post_lock_flat_sessions,
         "yearly_results": _yearly_breakdown(equity_points, trades, benchmark_by_date),
+        "replay_equity_points": equity_points,
+        "replay_trades": trades,
         "methodology": (
             "Signals use data available through each close; target orders fill at next session open with configured costs/slippage. "
             + (
