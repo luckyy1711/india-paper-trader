@@ -1,0 +1,7 @@
+[Unit]
+Description=NEON BTC ETH hourly crypto paper trader (no real orders)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/india-paper-trader
+ExecStart=%h/india-paper-trader/.venv/bin/python -m paper_trader.crypto_paper
