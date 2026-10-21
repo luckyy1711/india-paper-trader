@@ -9,13 +9,12 @@
   "entry_prices": {
     "BTC-USD": 82506.43400999998
   },
-  "peak_equity": 1000.1835961105337,
+  "peak_equity": 1000.2167574994235,
   "risk_locked": false,
-  "last_bar": "2026-10-20T21:00:00+00:00",
+  "last_bar": "2026-10-21T00:00:00+00:00",
   "pending": {
-    "time": "2026-10-20T21:00:00+00:00",
+    "time": "2026-10-21T00:00:00+00:00",
     "targets": [
-      "BTC-USD",
       "ETH-USD"
     ]
   },
