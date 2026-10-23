@@ -1,11 +1,11 @@
 {
   "cash": 10000.0,
   "initial_cash": 10000.0,
-  "last_mark_date": "2026-10-22",
-  "last_signal_date": "2026-10-22",
+  "last_mark_date": "2026-10-23",
+  "last_signal_date": "2026-10-23",
   "peak_equity": 10000.0,
   "pending_target": {
-    "signal_date": "2026-10-22",
+    "signal_date": "2026-10-23",
     "target_symbols": []
   },
   "positions": {},
