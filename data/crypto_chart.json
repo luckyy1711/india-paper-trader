@@ -2,23 +2,19 @@
   "mode": "crypto_paper_only",
   "currency": "USD",
   "model": "ema_rsi",
-  "updated_utc": "2026-10-23T22:06:21.266662+00:00",
+  "updated_utc": "2026-10-24T00:38:16.632046+00:00",
   "state": {
     "schema_version": 1,
     "currency": "USD",
     "initial_cash": 1000.0,
-    "cash": 950.0,
-    "positions": {
-      "BTC-USD": 0.000604803736818275
-    },
-    "entry_prices": {
-      "BTC-USD": 82506.43400999998
-    },
+    "cash": 998.9564578495247,
+    "positions": {},
+    "entry_prices": {},
     "peak_equity": 1001.313792853526,
     "risk_locked": false,
-    "last_bar": "2026-10-23T21:00:00+00:00",
+    "last_bar": "2026-10-23T23:00:00+00:00",
     "pending": {
-      "time": "2026-10-23T21:00:00+00:00",
+      "time": "2026-10-23T23:00:00+00:00",
       "targets": []
     },
     "model": "ema_rsi"
@@ -26,11 +22,11 @@
   "signals": {
     "BTC-USD": {
       "buy": false,
-      "explanation": "EMA20=81632.75, EMA50=81958.16, RSI=43.4"
+      "explanation": "EMA20=81521.54, EMA50=81885.59, RSI=38.7"
     },
     "ETH-USD": {
       "buy": false,
-      "explanation": "EMA20=2403.72, EMA50=2412.42, RSI=48.7"
+      "explanation": "EMA20=2399.04, EMA50=2409.75, RSI=44.8"
     }
   },
   "market_sources": {
@@ -39,20 +35,6 @@
   },
   "candles": {
     "BTC-USD": [
-      {
-        "time": "2026-10-17T06:00:00+00:00",
-        "open": 81574.99,
-        "high": 81640.01,
-        "low": 81558.45,
-        "close": 81640.0
-      },
-      {
-        "time": "2026-10-17T07:00:00+00:00",
-        "open": 81640.01,
-        "high": 81770.01,
-        "low": 81582.08,
-        "close": 81738.87
-      },
       {
         "time": "2026-10-17T08:00:00+00:00",
         "open": 81738.87,
@@ -1158,23 +1140,23 @@
         "high": 81500.0,
         "low": 81330.0,
         "close": 81378.69
+      },
+      {
+        "time": "2026-10-23T22:00:00+00:00",
+        "open": 81378.69,
+        "high": 81440.96,
+        "low": 80559.6,
+        "close": 80832.13
+      },
+      {
+        "time": "2026-10-23T23:00:00+00:00",
+        "open": 80832.13,
+        "high": 81200.0,
+        "low": 80513.0,
+        "close": 81189.43
       }
     ],
     "ETH-USD": [
-      {
-        "time": "2026-10-17T06:00:00+00:00",
-        "open": 2428.8,
-        "high": 2434.65,
-        "low": 2427.54,
-        "close": 2433.27
-      },
-      {
-        "time": "2026-10-17T07:00:00+00:00",
-        "open": 2433.29,
-        "high": 2438.29,
-        "low": 2430.62,
-        "close": 2435.04
-      },
       {
         "time": "2026-10-17T08:00:00+00:00",
         "open": 2435.04,
@@ -2280,6 +2262,20 @@
         "high": 2405.22,
         "low": 2396.88,
         "close": 2399.76
+      },
+      {
+        "time": "2026-10-23T22:00:00+00:00",
+        "open": 2399.77,
+        "high": 2403.08,
+        "low": 2351.55,
+        "close": 2367.26
+      },
+      {
+        "time": "2026-10-23T23:00:00+00:00",
+        "open": 2367.27,
+        "high": 2388.29,
+        "low": 2357.96,
+        "close": 2387.6
       }
     ]
   },
@@ -2292,6 +2288,15 @@
       "price": "82506.434",
       "fees": "0.0998",
       "reason": "User-requested 5% virtual BTC bootstrap (not a model signal)"
+    },
+    {
+      "time": "2026-10-23T23:00:00+00:00",
+      "side": "SELL",
+      "symbol": "BTC-USD",
+      "quantity": "0.0006048",
+      "price": "81108.2406",
+      "fees": "0.0981",
+      "reason": "Exit signal / risk lock"
     }
   ],
   "notes": "Confirmed hourly candles, delayed Yahoo data; no broker/exchange orders."
