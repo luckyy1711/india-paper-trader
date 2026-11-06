@@ -1,12 +1,16 @@
 {
   "cash": 10000.0,
   "initial_cash": 10000.0,
-  "last_mark_date": "2026-10-30",
-  "last_signal_date": "2026-10-30",
+  "last_mark_date": "2026-11-06",
+  "last_signal_date": "2026-11-06",
   "peak_equity": 10000.0,
   "pending_target": {
-    "signal_date": "2026-10-30",
-    "target_symbols": []
+    "signal_date": "2026-11-06",
+    "target_symbols": [
+      "ETERNAL",
+      "KOTAKBANK",
+      "ICICIBANK"
+    ]
   },
   "positions": {},
   "risk_locked": false,
